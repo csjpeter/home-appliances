@@ -3,6 +3,9 @@ add_library(appliances STATIC
     src/core/config.c
     src/core/base64.c
     src/infrastructure/gree_client.c
+    src/infrastructure/samsung_tv_client.c
+    src/infrastructure/brother_client.c
+    src/infrastructure/roborock_client.c
     src/domain/appliance_service.c
 )
 

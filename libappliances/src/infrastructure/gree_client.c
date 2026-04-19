@@ -18,11 +18,15 @@
 #define GREE_UNICAST_TIMEOUT_MS 5000
 #define GREE_STORE_FMT          "%s/.config/home-appliances/gree_devices"
 
-/* Status columns requested and their fixed positions in the dat array. */
+/* Status columns requested and their fixed positions in the dat array.
+ * Positions: 0=Pow, 1=SetTem, 2=TemSen, 3=Mod, 4=Lig, 5=SwUpDn,
+ *            6=WdSpd, 7=Quiet, 8=Tur, 9=SwhSlp, 10=TemUn,
+ *            11=SwingLfRig, 12=Blo, 13=Air, 14=Health, 15=StHt, 16=HeatCoolType */
 #define GREE_STATUS_COLS \
     "\"Pow\",\"SetTem\",\"TemSen\",\"Mod\",\"Lig\",\"SwUpDn\"," \
-    "\"Wnd\",\"Quiet\",\"Tur\",\"SvSt\",\"TemUn\""
-#define GREE_STATUS_COL_COUNT 11
+    "\"WdSpd\",\"Quiet\",\"Tur\",\"SwhSlp\",\"TemUn\"," \
+    "\"SwingLfRig\",\"Blo\",\"Air\",\"Health\",\"StHt\",\"HeatCoolType\""
+#define GREE_STATUS_COL_COUNT 17
 
 /* ── RAII cleanup helpers ─────────────────────────────────────────────── */
 
@@ -413,12 +417,12 @@ int gree_client_get_status(const GreeDevice *dev, GreeStatus *out)
         return -1;
     }
 
-    char inner[512] = {0};
+    char inner[768] = {0};
     snprintf(inner, sizeof(inner),
              "{\"cols\":[" GREE_STATUS_COLS "],\"mac\":\"%s\",\"t\":\"status\"}",
              dev->mac);
 
-    char pack_b64[512] = {0};
+    char pack_b64[768] = {0};
     if (gree_pack_encrypt(dev->device_key, inner,
                           pack_b64, sizeof(pack_b64)) < 0)
         return -1;
@@ -442,7 +446,10 @@ int gree_client_get_status(const GreeDevice *dev, GreeStatus *out)
         return -1;
     LOG_DEBUG_MSG("Gree status: %.200s", plain);
 
-    /* dat array: Pow SetTem TemSen Mod Lig SwUpDn Wnd Quiet Tur SvSt TemUn */
+    /* dat positions:
+     * 0=Pow, 1=SetTem, 2=TemSen, 3=Mod, 4=Lig, 5=SwUpDn,
+     * 6=WdSpd, 7=Quiet, 8=Tur, 9=SwhSlp, 10=TemUn,
+     * 11=SwingLfRig, 12=Blo, 13=Air, 14=Health, 15=StHt, 16=HeatCoolType */
     int dat[GREE_STATUS_COL_COUNT] = {0};
     int n = json_int_array(plain, "dat", dat, GREE_STATUS_COL_COUNT);
     if (n < GREE_STATUS_COL_COUNT) {
@@ -450,17 +457,24 @@ int gree_client_get_status(const GreeDevice *dev, GreeStatus *out)
         return -1;
     }
 
-    out->power     =  dat[0];
-    out->set_temp  =  dat[1];
-    out->room_temp =  dat[2];
-    out->mode      = (GreeMode)dat[3];
-    out->lights    =  dat[4];
-    out->swing     =  dat[5];
-    out->fan       = (GreeFanSpeed)dat[6];
-    out->quiet     =  dat[7];
-    out->turbo     =  dat[8];
-    out->sleep     =  dat[9];
-    out->temp_unit = (GreeTempUnit)dat[10];
+    out->power          =  dat[0];
+    out->set_temp       =  dat[1];
+    /* TemSen raw values >60 are offset by 40 (firmware encoding) */
+    out->room_temp      = (dat[2] > 60) ? (dat[2] - 40) : dat[2];
+    out->mode           = (GreeMode)dat[3];
+    out->lights         =  dat[4];
+    out->swing_v        =  dat[5];
+    out->fan            = (GreeFanSpeed)dat[6];
+    out->quiet          =  dat[7];
+    out->turbo          =  dat[8];
+    out->sleep          =  dat[9];
+    out->temp_unit      = (GreeTempUnit)dat[10];
+    out->swing_h        =  dat[11];
+    out->xfan           =  dat[12];
+    out->air            =  dat[13];
+    out->health         =  dat[14];
+    out->steady_heat    =  dat[15];
+    out->heat_cool_type =  dat[16];
     return 0;
 }
 

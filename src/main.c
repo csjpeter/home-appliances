@@ -1,13 +1,17 @@
 #include "core/config.h"
 #include "core/logger.h"
 #include "domain/appliance_service.h"
+#include "infrastructure/brother_client.h"
 #include "infrastructure/gree_client.h"
+#include "infrastructure/roborock_client.h"
+#include "infrastructure/samsung_tv_client.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* ── Helpers ─────────────────────────────────────────────────────────── */
+/* ── Generic helpers ─────────────────────────────────────────────────── */
 
 static int broadcast_from_cfg(const Config *cfg, char *out, size_t out_len)
 {
@@ -23,6 +27,30 @@ static int broadcast_from_cfg(const Config *cfg, char *out, size_t out_len)
     }
     snprintf(out, out_len, "%d.%d.%d.255", a, b, c);
     return 0;
+}
+
+/* Returns 1 if the string looks like an IPv4 address (digits and dots only). */
+static int looks_like_ip(const char *s)
+{
+    if (!s || !isdigit((unsigned char)s[0]))
+        return 0;
+    int dots = 0;
+    for (const char *p = s; *p; p++) {
+        if (*p == '.') { dots++; }
+        else if (!isdigit((unsigned char)*p)) return 0;
+    }
+    return dots == 3;
+}
+
+/* ── Gree helpers ────────────────────────────────────────────────────── */
+
+static GreeDevice *gree_find_device(GreeDeviceList *list, const char *ip)
+{
+    for (int i = 0; i < list->count; i++) {
+        if (strcmp(list->devices[i].ip, ip) == 0 && list->devices[i].bound)
+            return &list->devices[i];
+    }
+    return NULL;
 }
 
 /* ── list command ────────────────────────────────────────────────────── */
@@ -44,7 +72,7 @@ static int cmd_list(const Config *cfg)
     return 0;
 }
 
-/* ── ac subcommands ──────────────────────────────────────────────────── */
+/* ── AC (Gree) commands ───────────────────────────────────────────────── */
 
 static int cmd_ac_list(const Config *cfg)
 {
@@ -89,7 +117,6 @@ static int cmd_ac_bind(const char *ip, const Config *cfg)
     if (broadcast_from_cfg(cfg, broadcast, sizeof(broadcast)) != 0)
         return -1;
 
-    /* Scan to discover the device and obtain its MAC */
     GreeDeviceList scanned = {0};
     if (gree_client_scan(broadcast, cfg->discovery_timeout_ms, &scanned) != 0) {
         fprintf(stderr, "Scan failed.\n");
@@ -115,11 +142,9 @@ static int cmd_ac_bind(const char *ip, const Config *cfg)
         return -1;
     }
 
-    /* Copy bound device before freeing scanned list */
     GreeDevice bound = *target;
     gree_device_list_free(&scanned);
 
-    /* Merge with existing saved devices and save */
     GreeDeviceList saved = {0};
     gree_client_load_bound(&saved);
 
@@ -145,30 +170,49 @@ static int cmd_ac_bind(const char *ip, const Config *cfg)
 
     int rc = gree_client_save_bound(&saved);
     gree_device_list_free(&saved);
-
     if (rc == 0)
         printf("Bound %s (MAC: %s)\n", bound.ip, bound.mac);
     return rc;
 }
 
-static int cmd_ac_status(const char *ip)
+static void print_ac_status(const GreeStatus *st)
+{
+    static const char *modes[] = {"auto","cool","dry","fan","heat"};
+    static const char *fans[]  = {"auto","low","med-low","medium","med-high","high"};
+    const char unit = (st->temp_unit == GREE_TEMUN_FAHRENHEIT) ? 'F' : 'C';
+
+    printf("Power:       %s\n",    st->power ? "on" : "off");
+    printf("Target temp: %d°%c\n", st->set_temp, unit);
+    printf("Room temp:   %d°C\n",  st->room_temp);
+    printf("Mode:        %s\n",
+           (st->mode >= 0 && st->mode <= 4) ? modes[st->mode] : "?");
+    printf("Fan speed:   %s\n",
+           (st->fan >= 0 && st->fan <= 5) ? fans[st->fan] : "?");
+    printf("Swing V:     %s\n",    st->swing_v  ? "swing" : "fixed");
+    printf("Swing H:     %s\n",    st->swing_h == 1 ? "swing" :
+                                   st->swing_h == 0 ? "fixed" : "fixed-pos");
+    printf("Quiet:       %s\n",    st->quiet       ? "on" : "off");
+    printf("Turbo:       %s\n",    st->turbo       ? "on" : "off");
+    printf("Sleep:       %s\n",    st->sleep       ? "on" : "off");
+    printf("X-Fan:       %s\n",    st->xfan        ? "on" : "off");
+    printf("Health:      %s\n",    st->health      ? "on" : "off");
+    printf("Air:         %s\n",    st->air         ? "on" : "off");
+    printf("Anti-frost:  %s\n",    st->steady_heat ? "on" : "off");
+    printf("Lights:      %s\n",    st->lights      ? "on" : "off");
+    printf("Unit:        %s\n",    unit == 'F' ? "Fahrenheit" : "Celsius");
+    printf("Type:        %s\n",    st->heat_cool_type ? "heat+cool" : "cool-only");
+}
+
+static int cmd_ac_status_one(const char *ip)
 {
     GreeDeviceList saved = {0};
     if (gree_client_load_bound(&saved) != 0) {
         fprintf(stderr, "Cannot load device store.\n");
         return -1;
     }
-
-    GreeDevice *dev = NULL;
-    for (int i = 0; i < saved.count; i++) {
-        if (strcmp(saved.devices[i].ip, ip) == 0) {
-            dev = &saved.devices[i];
-            break;
-        }
-    }
-    if (!dev || !dev->bound) {
-        fprintf(stderr, "Device %s not bound. Run: %s ac bind %s\n",
-                ip, "home-appliances", ip);
+    GreeDevice *dev = gree_find_device(&saved, ip);
+    if (!dev) {
+        fprintf(stderr, "Device %s not bound. Run: ac bind %s\n", ip, ip);
         gree_device_list_free(&saved);
         return -1;
     }
@@ -177,30 +221,36 @@ static int cmd_ac_status(const char *ip)
     int rc = gree_client_get_status(dev, &st);
     gree_device_list_free(&saved);
     if (rc != 0) {
-        fprintf(stderr, "Failed to get status from %s\n", ip);
+        fprintf(stderr, "%s: failed to get status\n", ip);
         return -1;
     }
-
-    static const char *modes[] = {"auto", "cool", "dry", "fan", "heat"};
-    static const char *fans[]  = {"auto", "low",  "med", "high", "turbo"};
-    const char unit = (st.temp_unit == GREE_TEMUN_FAHRENHEIT) ? 'F' : 'C';
-
-    printf("Power:       %s\n",  st.power ? "on" : "off");
-    printf("Temperature: %d°%c\n", st.set_temp, unit);
-    printf("Room temp:   %d°%c\n", st.room_temp, unit);
-    printf("Mode:        %s\n",
-           (st.mode >= 0 && st.mode < 5) ? modes[st.mode] : "?");
-    printf("Fan:         %s\n",
-           (st.fan >= 0 && st.fan < 5) ? fans[st.fan] : "?");
-    printf("Lights:      %s\n",  st.lights ? "on" : "off");
-    printf("Quiet:       %s\n",  st.quiet  ? "on" : "off");
-    printf("Turbo:       %s\n",  st.turbo  ? "on" : "off");
-    printf("Sleep:       %s\n",  st.sleep  ? "on" : "off");
+    print_ac_status(&st);
     return 0;
 }
 
-/* Parse a user-supplied "key=value" string into a Gree protocol key and int.
- * Returns 0 on success, -1 on unknown key or bad value. */
+static int cmd_ac_temp_one(const char *ip)
+{
+    GreeDeviceList saved = {0};
+    if (gree_client_load_bound(&saved) != 0)
+        return -1;
+    GreeDevice *dev = gree_find_device(&saved, ip);
+    if (!dev) {
+        fprintf(stderr, "Device %s not bound.\n", ip);
+        gree_device_list_free(&saved);
+        return -1;
+    }
+    GreeStatus st = {0};
+    int rc = gree_client_get_status(dev, &st);
+    gree_device_list_free(&saved);
+    if (rc != 0) {
+        fprintf(stderr, "room temperature unavailable\n");
+        return -1;
+    }
+    printf("%d\n", st.room_temp);
+    return 0;
+}
+
+/* Parse "key=value" into Gree protocol key + int value. */
 static int parse_ac_param(const char *arg, const char **gree_key, int *gree_val)
 {
 #define KEY_EQ(pat) \
@@ -208,10 +258,7 @@ static int parse_ac_param(const char *arg, const char **gree_key, int *gree_val)
 #define VAL_EQ(s) (strcmp(val, (s)) == 0)
 
     const char *eq = strchr(arg, '=');
-    if (!eq) {
-        fprintf(stderr, "Expected key=value, got: %s\n", arg);
-        return -1;
-    }
+    if (!eq) { fprintf(stderr, "Expected key=value, got: %s\n", arg); return -1; }
     const char *key = arg;
     const char *val = eq + 1;
     size_t key_len  = (size_t)(eq - arg);
@@ -224,8 +271,7 @@ static int parse_ac_param(const char *arg, const char **gree_key, int *gree_val)
         *gree_key = "SetTem";
         *gree_val = atoi(val);
         if (*gree_val < 16 || *gree_val > 30) {
-            fprintf(stderr, "temp must be 16-30\n");
-            return -1;
+            fprintf(stderr, "temp must be 16-30\n"); return -1;
         }
         return 0;
     } else if (KEY_EQ("mode")) {
@@ -236,11 +282,15 @@ static int parse_ac_param(const char *arg, const char **gree_key, int *gree_val)
         if (VAL_EQ("fan"))  { *gree_val = 3; return 0; }
         if (VAL_EQ("heat")) { *gree_val = 4; return 0; }
     } else if (KEY_EQ("fan")) {
-        *gree_key = "Wnd";
-        if (VAL_EQ("auto")) { *gree_val = 0; return 0; }
-        if (VAL_EQ("low"))  { *gree_val = 1; return 0; }
-        if (VAL_EQ("med"))  { *gree_val = 2; return 0; }
-        if (VAL_EQ("high")) { *gree_val = 3; return 0; }
+        *gree_key = "WdSpd";
+        if (VAL_EQ("auto"))     { *gree_val = 0; return 0; }
+        if (VAL_EQ("low"))      { *gree_val = 1; return 0; }
+        if (VAL_EQ("med-low"))  { *gree_val = 2; return 0; }
+        if (VAL_EQ("medium") || VAL_EQ("med")) { *gree_val = 3; return 0; }
+        if (VAL_EQ("med-high")) { *gree_val = 4; return 0; }
+        if (VAL_EQ("high"))     { *gree_val = 5; return 0; }
+        *gree_val = atoi(val);
+        if (*gree_val >= 0 && *gree_val <= 5) return 0;
     } else if (KEY_EQ("lights")) {
         *gree_key = "Lig";
         if (VAL_EQ("on"))  { *gree_val = 1; return 0; }
@@ -254,16 +304,76 @@ static int parse_ac_param(const char *arg, const char **gree_key, int *gree_val)
         if (VAL_EQ("on"))  { *gree_val = 1; return 0; }
         if (VAL_EQ("off")) { *gree_val = 0; return 0; }
     } else if (KEY_EQ("sleep")) {
-        *gree_key = "SvSt";
+        *gree_key = "SwhSlp";
         if (VAL_EQ("on"))  { *gree_val = 1; return 0; }
         if (VAL_EQ("off")) { *gree_val = 0; return 0; }
+    } else if (KEY_EQ("swing_v")) {
+        *gree_key = "SwUpDn";
+        if (VAL_EQ("on")  || VAL_EQ("1")) { *gree_val = 1; return 0; }
+        if (VAL_EQ("off") || VAL_EQ("0")) { *gree_val = 0; return 0; }
+    } else if (KEY_EQ("swing_h")) {
+        *gree_key = "SwingLfRig";
+        if (VAL_EQ("off"))  { *gree_val = 0; return 0; }
+        if (VAL_EQ("full")) { *gree_val = 1; return 0; }
+        *gree_val = atoi(val);
+        if (*gree_val >= 0 && *gree_val <= 6) return 0;
+    } else if (KEY_EQ("xfan")) {
+        *gree_key = "Blo";
+        if (VAL_EQ("on"))  { *gree_val = 1; return 0; }
+        if (VAL_EQ("off")) { *gree_val = 0; return 0; }
+    } else if (KEY_EQ("health")) {
+        *gree_key = "Health";
+        if (VAL_EQ("on"))  { *gree_val = 1; return 0; }
+        if (VAL_EQ("off")) { *gree_val = 0; return 0; }
+    } else if (KEY_EQ("air")) {
+        *gree_key = "Air";
+        if (VAL_EQ("on"))  { *gree_val = 1; return 0; }
+        if (VAL_EQ("off")) { *gree_val = 0; return 0; }
+    } else if (KEY_EQ("antifrost")) {
+        *gree_key = "StHt";
+        if (VAL_EQ("on"))  { *gree_val = 1; return 0; }
+        if (VAL_EQ("off")) { *gree_val = 0; return 0; }
+    } else if (KEY_EQ("unit")) {
+        *gree_key = "TemUn";
+        if (VAL_EQ("c") || VAL_EQ("celsius"))    { *gree_val = 0; return 0; }
+        if (VAL_EQ("f") || VAL_EQ("fahrenheit")) { *gree_val = 1; return 0; }
     }
 
 #undef KEY_EQ
 #undef VAL_EQ
-
     fprintf(stderr, "Unknown parameter or value: %s\n", arg);
     return -1;
+}
+
+/* Collect leading IP addresses from args, remaining are key=value params.
+ * Returns count of IPs found; sets *params_start to first non-IP index. */
+static int collect_ips(char **args, int nargs, const char **ips, int max_ips,
+                       int *params_start)
+{
+    int n = 0;
+    int i = 0;
+    for (; i < nargs && n < max_ips && looks_like_ip(args[i]); i++)
+        ips[n++] = args[i];
+    *params_start = i;
+    return n;
+}
+
+/* Send a single key=value pair to one device. */
+static int ac_set_single(const char *ip, const char *gree_key, int gree_val)
+{
+    GreeDeviceList saved = {0};
+    if (gree_client_load_bound(&saved) != 0) return -1;
+    GreeDevice *dev = gree_find_device(&saved, ip);
+    if (!dev) {
+        fprintf(stderr, "Device %s not bound.\n", ip);
+        gree_device_list_free(&saved);
+        return -1;
+    }
+    const char *keys[1] = { gree_key };
+    int         vals[1] = { gree_val };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    gree_device_list_free(&saved);
+    return rc;
 }
 
 static int cmd_ac_set(const char *ip, char **args, int nargs)
@@ -272,23 +382,14 @@ static int cmd_ac_set(const char *ip, char **args, int nargs)
         fprintf(stderr, "ac set: at least one key=value required\n");
         return -1;
     }
-
     GreeDeviceList saved = {0};
     if (gree_client_load_bound(&saved) != 0) {
         fprintf(stderr, "Cannot load device store.\n");
         return -1;
     }
-
-    GreeDevice *dev = NULL;
-    for (int i = 0; i < saved.count; i++) {
-        if (strcmp(saved.devices[i].ip, ip) == 0) {
-            dev = &saved.devices[i];
-            break;
-        }
-    }
-    if (!dev || !dev->bound) {
-        fprintf(stderr, "Device %s not bound. Run: %s ac bind %s\n",
-                ip, "home-appliances", ip);
+    GreeDevice *dev = gree_find_device(&saved, ip);
+    if (!dev) {
+        fprintf(stderr, "Device %s not bound. Run: ac bind %s\n", ip, ip);
         gree_device_list_free(&saved);
         return -1;
     }
@@ -296,7 +397,6 @@ static int cmd_ac_set(const char *ip, char **args, int nargs)
     const char *keys[16];
     int         vals[16];
     int         count = 0;
-
     for (int i = 0; i < nargs && count < 16; i++) {
         if (parse_ac_param(args[i], &keys[count], &vals[count]) != 0) {
             gree_device_list_free(&saved);
@@ -312,6 +412,201 @@ static int cmd_ac_set(const char *ip, char **args, int nargs)
     return rc;
 }
 
+/* ── Vacuum (Roborock) commands ───────────────────────────────────────── */
+
+static int get_vacuum(const char *ip, RoborockDevice *dev)
+{
+    memset(dev, 0, sizeof(*dev));
+    strncpy(dev->ip, ip, sizeof(dev->ip) - 1);
+
+    int rc = roborock_load(ip, dev);
+    if (rc != 0) {
+        /* not found or error — do hello */
+        if (roborock_hello(dev) != 0) {
+            fprintf(stderr, "Cannot connect to vacuum at %s\n", ip);
+            return -1;
+        }
+        roborock_save(dev);
+    }
+    return 0;
+}
+
+static const char *vacuum_state_str(int state)
+{
+    switch (state) {
+        case 1:  return "initializing";
+        case 2:  return "sleep";
+        case 3:  return "idle";
+        case 5:  return "cleaning";
+        case 6:  return "returning";
+        case 8:  return "charging";
+        case 11: return "error";
+        case 16: return "shutdown";
+        default: return "unknown";
+    }
+}
+
+static const char *fan_speed_label(int fan)
+{
+    switch (fan) {
+        case 101: return "silent";
+        case 102: return "balanced";
+        case 103: return "turbo";
+        case 104: return "max";
+        case 105: return "gentle";
+        default:  return "unknown";
+    }
+}
+
+static int parse_fan_level(const char *s)
+{
+    if (strcmp(s, "silent")   == 0) return 101;
+    if (strcmp(s, "balanced") == 0) return 102;
+    if (strcmp(s, "turbo")    == 0) return 103;
+    if (strcmp(s, "max")      == 0) return 104;
+    if (strcmp(s, "gentle")   == 0) return 105;
+    int n = atoi(s);
+    return (n >= 101 && n <= 105) ? n : -1;
+}
+
+static int consumable_pct(int seconds, int threshold_seconds)
+{
+    int used_pct = seconds * 100 / threshold_seconds;
+    return 100 - (used_pct > 100 ? 100 : used_pct);
+}
+
+static int cmd_vacuum_status(const char *ip)
+{
+    RoborockDevice dev = {0};
+    if (get_vacuum(ip, &dev) != 0) return -1;
+
+    RoborockStatus st = {0};
+    if (roborock_get_status(&dev, &st) != 0) {
+        fprintf(stderr, "Failed to get vacuum status from %s\n", ip);
+        return -1;
+    }
+
+    printf("State:    %s\n", vacuum_state_str(st.state));
+    printf("Battery:  %d%%\n", st.battery);
+    printf("Fan:      %s\n", fan_speed_label(st.fan_power));
+    if (st.in_cleaning) {
+        printf("Run time: %d min\n", st.clean_time / 60);
+        printf("Area:     %.1f m²\n", st.clean_area / 10000.0);
+    }
+    if (st.error_code != 0)
+        printf("Error:    code %d\n", st.error_code);
+    else
+        printf("Error:    none\n");
+    return 0;
+}
+
+static int cmd_vacuum_consumables(const char *ip)
+{
+    RoborockDevice dev = {0};
+    if (get_vacuum(ip, &dev) != 0) return -1;
+
+    RoborockConsumables c = {0};
+    if (roborock_get_consumable(&dev, &c) != 0) {
+        fprintf(stderr, "Failed to get consumables from %s\n", ip);
+        return -1;
+    }
+
+    printf("Main brush:  %d%% (%d h used)\n",
+           consumable_pct(c.main_brush, 1080000), c.main_brush / 3600);
+    printf("Side brush:  %d%% (%d h used)\n",
+           consumable_pct(c.side_brush, 720000),  c.side_brush / 3600);
+    printf("Filter:      %d%% (%d h used)\n",
+           consumable_pct(c.filter,     540000),  c.filter     / 3600);
+    printf("Sensors:     %d%% (%d h used)\n",
+           consumable_pct(c.sensor,     108000),  c.sensor     / 3600);
+    return 0;
+}
+
+/* ── TV (Samsung) commands ───────────────────────────────────────────── */
+
+static const char *const KNOWN_TV_KEYS[] = {
+    "KEY_POWER","KEY_POWEROFF","KEY_POWERON",
+    "KEY_VOLUP","KEY_VOLDOWN","KEY_MUTE",
+    "KEY_CHUP","KEY_CHDOWN","KEY_PRECH",
+    "KEY_SOURCE","KEY_HDMI","KEY_TV","KEY_AV1","KEY_AV2",
+    "KEY_0","KEY_1","KEY_2","KEY_3","KEY_4",
+    "KEY_5","KEY_6","KEY_7","KEY_8","KEY_9",
+    "KEY_ENTER","KEY_RETURN","KEY_EXIT",
+    "KEY_UP","KEY_DOWN","KEY_LEFT","KEY_RIGHT",
+    "KEY_MENU","KEY_HOME","KEY_TOOLS","KEY_INFO","KEY_GUIDE",
+    "KEY_PLAY","KEY_PAUSE","KEY_STOP","KEY_FF","KEY_REWIND",
+    "KEY_RED","KEY_GREEN","KEY_YELLOW","KEY_CYAN",
+    "KEY_PIP_ONOFF","KEY_PMODE","KEY_ASPECT",
+    NULL
+};
+
+static int is_known_key(const char *key)
+{
+    for (int i = 0; KNOWN_TV_KEYS[i]; i++)
+        if (strcmp(KNOWN_TV_KEYS[i], key) == 0) return 1;
+    return 0;
+}
+
+static int cmd_tv_probe(const char *ip)
+{
+    int r = samsung_tv_probe(ip);
+    if (r > 0)       printf("%s: online\n",  ip);
+    else if (r == 0) printf("%s: offline\n", ip);
+    else             fprintf(stderr, "%s: probe error\n", ip);
+    return (r >= 0) ? 0 : -1;
+}
+
+static int cmd_tv_key(const char *ip, const char *key)
+{
+    if (!is_known_key(key))
+        fprintf(stderr, "Warning: '%s' not in known key list\n", key);
+    if (samsung_tv_send_key(ip, key) != 0) {
+        fprintf(stderr, "%s: failed to send %s\n", ip, key);
+        return -1;
+    }
+    printf("%s: sent %s\n", ip, key);
+    return 0;
+}
+
+/* ── Printer (Brother) commands ──────────────────────────────────────── */
+
+static const char *printer_state_str(int state)
+{
+    switch (state) {
+        case 3: return "idle";
+        case 4: return "printing";
+        case 5: return "stopped";
+        default: return "unknown";
+    }
+}
+
+static int cmd_printer_probe(const char *ip)
+{
+    char model[64] = {0};
+    int r = brother_probe(ip, model, sizeof(model));
+    if (r > 0)       printf("%s: online — %s\n", ip, model[0] ? model : "Brother printer");
+    else if (r == 0) printf("%s: offline (unreachable)\n", ip);
+    else             fprintf(stderr, "%s: probe error\n", ip);
+    return (r >= 0) ? 0 : -1;
+}
+
+static int cmd_printer_status(const char *ip)
+{
+    BrotherStatus st = {0};
+    if (brother_get_status(ip, &st) != 0) {
+        fprintf(stderr, "%s: failed to query printer status\n", ip);
+        return -1;
+    }
+    printf("State:  %s\n", printer_state_str(st.state));
+    if (st.toner_pct >= 0)
+        printf("Toner:  %d%%%s\n", st.toner_pct,
+               st.toner_low > 0 ? " [LOW]" : "");
+    else
+        printf("Toner:  n/a\n");
+    printf("Pages:  %d\n", st.page_count >= 0 ? st.page_count : 0);
+    return 0;
+}
+
 /* ── Usage ───────────────────────────────────────────────────────────── */
 
 static void print_usage(const char *prog)
@@ -319,22 +614,44 @@ static void print_usage(const char *prog)
     fprintf(stderr,
         "Usage: %s <command> [options]\n"
         "\n"
-        "Commands:\n"
-        "  list                    Scan and list all appliances\n"
-        "  ac list                 List Gree AC units (with bind status)\n"
-        "  ac bind <ip>            Bind to AC at <ip>\n"
-        "  ac status <ip>          Show AC status\n"
-        "  ac set <ip> key=val ... Set AC parameters:\n"
-        "    power=on|off          Power on or off\n"
-        "    temp=<16-30>          Target temperature (Celsius)\n"
-        "    mode=auto|cool|heat|dry|fan\n"
-        "    fan=auto|low|med|high Fan speed\n"
-        "    lights=on|off         Display lights\n"
-        "    quiet=on|off          Quiet mode\n"
-        "    turbo=on|off          Turbo mode\n"
-        "    sleep=on|off          Sleep mode\n"
-        "  version                 Print version\n"
-        "  help                    Show this help\n",
+        "General:\n"
+        "  list                      Scan all appliances\n"
+        "  version\n"
+        "  help\n"
+        "\n"
+        "AC (Gree) — ac <sub> <ip> [params]:\n"
+        "  ac list                   Scan for AC units\n"
+        "  ac bind <ip>              Bind to AC\n"
+        "  ac status <ip...>         Show status\n"
+        "  ac temp <ip...>           Room temperature (integer °C)\n"
+        "  ac on  <ip...>            Power on\n"
+        "  ac off <ip...>            Power off\n"
+        "  ac set <ip> key=val ...   Set parameters:\n"
+        "    power=on|off  temp=<16-30>  mode=auto|cool|dry|fan|heat\n"
+        "    fan=auto|low|med-low|medium|med-high|high\n"
+        "    sleep=on|off  quiet=on|off  turbo=on|off\n"
+        "    swing_v=on|off  swing_h=off|full|1-6\n"
+        "    xfan=on|off  health=on|off  air=on|off\n"
+        "    antifrost=on|off  lights=on|off  unit=c|f\n"
+        "\n"
+        "Vacuum (Roborock) — vacuum <sub> <ip>:\n"
+        "  vacuum status <ip>        Show status\n"
+        "  vacuum consumables <ip>   Show consumable life\n"
+        "  vacuum start|stop|pause|dock|spot|find <ip>\n"
+        "  vacuum fan <ip> silent|balanced|turbo|max|gentle\n"
+        "  vacuum reset-brush|reset-side-brush|reset-filter|reset-sensor <ip>\n"
+        "\n"
+        "TV (Samsung) — tv <sub> <ip>:\n"
+        "  tv probe <ip>             Check if TV is on\n"
+        "  tv key <ip> KEY_*         Send any key code\n"
+        "  tv volup|voldown|mute <ip>\n"
+        "  tv power|off <ip>\n"
+        "  tv source|hdmi <ip>\n"
+        "  tv channel <ip> up|down\n"
+        "\n"
+        "Printer (Brother) — printer <sub> <ip>:\n"
+        "  printer probe <ip>        Check reachability\n"
+        "  printer status <ip>       State, toner, page count\n",
         prog);
 }
 
@@ -348,7 +665,6 @@ int main(int argc, char *argv[])
         print_usage(argv[0]);
         return 0;
     }
-
     if (strcmp(argv[1], "version") == 0
         || strcmp(argv[1], "--version") == 0) {
         printf("home-appliances %s\n", HOME_APPLIANCES_VERSION);
@@ -366,38 +682,191 @@ int main(int argc, char *argv[])
 
     int ret = 0;
 
+    /* ── list ── */
     if (strcmp(argv[1], "list") == 0) {
         ret = cmd_list(&cfg);
 
+    /* ── ac ── */
     } else if (strcmp(argv[1], "ac") == 0) {
-        if (argc < 3) {
+        if (argc < 3) { print_usage(argv[0]); ret = 1; goto done; }
+        const char *sub = argv[2];
+
+        if (strcmp(sub, "list") == 0) {
+            ret = cmd_ac_list(&cfg);
+
+        } else if (strcmp(sub, "bind") == 0) {
+            if (argc < 4) { fprintf(stderr, "ac bind: missing <ip>\n"); ret = 1; }
+            else          ret = cmd_ac_bind(argv[3], &cfg);
+
+        } else if (strcmp(sub, "status") == 0 || strcmp(sub, "temp") == 0
+                   || strcmp(sub, "on") == 0  || strcmp(sub, "off") == 0) {
+            /* Multi-IP: ac status ip1 ip2 ... */
+            const char *ips[32];
+            int dummy;
+            int n = collect_ips(argv + 3, argc - 3, ips, 32, &dummy);
+            if (n == 0) { fprintf(stderr, "ac %s: missing <ip>\n", sub); ret = 1; goto done; }
+            for (int i = 0; i < n; i++) {
+                if (n > 1) printf("[%s]\n", ips[i]);
+                int r = 0;
+                if (strcmp(sub, "status") == 0)
+                    r = cmd_ac_status_one(ips[i]);
+                else if (strcmp(sub, "temp") == 0)
+                    r = cmd_ac_temp_one(ips[i]);
+                else if (strcmp(sub, "on") == 0)
+                    r = ac_set_single(ips[i], "Pow", 1);
+                else
+                    r = ac_set_single(ips[i], "Pow", 0);
+                if (r != 0) ret = 1;
+            }
+
+        } else if (strcmp(sub, "set") == 0) {
+            if (argc < 5) { fprintf(stderr, "ac set: missing <ip> and params\n"); ret = 1; }
+            else          ret = cmd_ac_set(argv[3], argv + 4, argc - 4);
+
+        } else {
+            /* Shortcut subcommands with single param: swing-v, xfan, etc. */
+            if (argc < 4) { fprintf(stderr, "ac %s: missing <ip>\n", sub); ret = 1; goto done; }
+            const char *ip  = argv[3];
+            const char *val = argc > 4 ? argv[4] : "";
+            int on = (strcmp(val, "on") == 0 || strcmp(val, "1") == 0);
+            int off= (strcmp(val, "off") == 0|| strcmp(val, "0") == 0);
+
+            if (strcmp(sub, "swing-v") == 0) {
+                if (!on && !off) { fprintf(stderr, "swing-v: on|off required\n"); ret = 1; }
+                else ret = ac_set_single(ip, "SwUpDn", on ? 1 : 0);
+            } else if (strcmp(sub, "xfan") == 0) {
+                if (!on && !off) { fprintf(stderr, "xfan: on|off required\n"); ret = 1; }
+                else ret = ac_set_single(ip, "Blo", on ? 1 : 0);
+            } else if (strcmp(sub, "health") == 0) {
+                if (!on && !off) { fprintf(stderr, "health: on|off required\n"); ret = 1; }
+                else ret = ac_set_single(ip, "Health", on ? 1 : 0);
+            } else if (strcmp(sub, "air") == 0) {
+                if (!on && !off) { fprintf(stderr, "air: on|off required\n"); ret = 1; }
+                else ret = ac_set_single(ip, "Air", on ? 1 : 0);
+            } else if (strcmp(sub, "antifrost") == 0) {
+                if (!on && !off) { fprintf(stderr, "antifrost: on|off required\n"); ret = 1; }
+                else ret = ac_set_single(ip, "StHt", on ? 1 : 0);
+            } else if (strcmp(sub, "swing-h") == 0) {
+                int h = 0;
+                if (strcmp(val, "off") == 0) h = 0;
+                else if (strcmp(val, "full") == 0) h = 1;
+                else { h = atoi(val); if (h < 0 || h > 6) { fprintf(stderr, "swing-h: off|full|0-6\n"); ret = 1; goto done; } }
+                ret = ac_set_single(ip, "SwingLfRig", h);
+            } else if (strcmp(sub, "unit") == 0) {
+                int u = -1;
+                if (strcmp(val,"c")==0||strcmp(val,"celsius")==0)    u = 0;
+                if (strcmp(val,"f")==0||strcmp(val,"fahrenheit")==0) u = 1;
+                if (u < 0) { fprintf(stderr, "unit: c|f required\n"); ret = 1; }
+                else ret = ac_set_single(ip, "TemUn", u);
+            } else {
+                fprintf(stderr, "Unknown ac subcommand: %s\n", sub);
+                print_usage(argv[0]);
+                ret = 1;
+            }
+        }
+
+    /* ── vacuum ── */
+    } else if (strcmp(argv[1], "vacuum") == 0) {
+        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
+        const char *sub = argv[2];
+        const char *ip  = argv[3];
+
+        RoborockDevice dev = {0};
+
+        if (strcmp(sub, "status") == 0) {
+            ret = cmd_vacuum_status(ip);
+        } else if (strcmp(sub, "consumables") == 0) {
+            ret = cmd_vacuum_consumables(ip);
+        } else if (strcmp(sub, "start") == 0) {
+            if (get_vacuum(ip, &dev) == 0) ret = roborock_start(&dev);
+            else ret = -1;
+        } else if (strcmp(sub, "stop") == 0) {
+            if (get_vacuum(ip, &dev) == 0) ret = roborock_stop(&dev);
+            else ret = -1;
+        } else if (strcmp(sub, "pause") == 0) {
+            if (get_vacuum(ip, &dev) == 0) ret = roborock_pause(&dev);
+            else ret = -1;
+        } else if (strcmp(sub, "dock") == 0) {
+            if (get_vacuum(ip, &dev) == 0) ret = roborock_dock(&dev);
+            else ret = -1;
+        } else if (strcmp(sub, "spot") == 0) {
+            if (get_vacuum(ip, &dev) == 0) ret = roborock_spot(&dev);
+            else ret = -1;
+        } else if (strcmp(sub, "find") == 0) {
+            if (get_vacuum(ip, &dev) == 0) ret = roborock_find(&dev);
+            else ret = -1;
+        } else if (strcmp(sub, "fan") == 0) {
+            if (argc < 5) { fprintf(stderr, "vacuum fan: missing level\n"); ret = 1; goto done; }
+            int level = parse_fan_level(argv[4]);
+            if (level < 0) { fprintf(stderr, "vacuum fan: silent|balanced|turbo|max|gentle\n"); ret = 1; goto done; }
+            if (get_vacuum(ip, &dev) == 0) ret = roborock_set_fan(&dev, level);
+            else ret = -1;
+        } else if (strcmp(sub, "reset-brush") == 0) {
+            if (get_vacuum(ip, &dev) == 0)
+                ret = roborock_reset_consumable(&dev, "main_brush_work_time");
+            else ret = -1;
+        } else if (strcmp(sub, "reset-side-brush") == 0) {
+            if (get_vacuum(ip, &dev) == 0)
+                ret = roborock_reset_consumable(&dev, "side_brush_work_time");
+            else ret = -1;
+        } else if (strcmp(sub, "reset-filter") == 0) {
+            if (get_vacuum(ip, &dev) == 0)
+                ret = roborock_reset_consumable(&dev, "filter_work_time");
+            else ret = -1;
+        } else if (strcmp(sub, "reset-sensor") == 0) {
+            if (get_vacuum(ip, &dev) == 0)
+                ret = roborock_reset_consumable(&dev, "sensor_dirty_time");
+            else ret = -1;
+        } else {
+            fprintf(stderr, "Unknown vacuum subcommand: %s\n", sub);
             print_usage(argv[0]);
             ret = 1;
-        } else if (strcmp(argv[2], "list") == 0) {
-            ret = cmd_ac_list(&cfg);
-        } else if (strcmp(argv[2], "bind") == 0) {
-            if (argc < 4) {
-                fprintf(stderr, "ac bind: missing <ip>\n");
-                ret = 1;
-            } else {
-                ret = cmd_ac_bind(argv[3], &cfg);
-            }
-        } else if (strcmp(argv[2], "status") == 0) {
-            if (argc < 4) {
-                fprintf(stderr, "ac status: missing <ip>\n");
-                ret = 1;
-            } else {
-                ret = cmd_ac_status(argv[3]);
-            }
-        } else if (strcmp(argv[2], "set") == 0) {
-            if (argc < 5) {
-                fprintf(stderr, "ac set: missing <ip> and parameters\n");
-                ret = 1;
-            } else {
-                ret = cmd_ac_set(argv[3], argv + 4, argc - 4);
-            }
+        }
+
+        if (ret != 0 && ret != 1)
+            fprintf(stderr, "vacuum %s %s: failed\n", sub, ip);
+
+    /* ── tv ── */
+    } else if (strcmp(argv[1], "tv") == 0) {
+        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
+        const char *sub = argv[2];
+        const char *ip  = argv[3];
+
+        if (strcmp(sub, "probe") == 0) {
+            ret = cmd_tv_probe(ip);
+        } else if (strcmp(sub, "key") == 0) {
+            if (argc < 5) { fprintf(stderr, "tv key: missing KEY_*\n"); ret = 1; }
+            else          ret = cmd_tv_key(ip, argv[4]);
+        } else if (strcmp(sub, "volup")   == 0) { ret = cmd_tv_key(ip, "KEY_VOLUP");   }
+        else if (strcmp(sub, "voldown") == 0) { ret = cmd_tv_key(ip, "KEY_VOLDOWN"); }
+        else if (strcmp(sub, "mute")    == 0) { ret = cmd_tv_key(ip, "KEY_MUTE");    }
+        else if (strcmp(sub, "power")   == 0) { ret = cmd_tv_key(ip, "KEY_POWER");   }
+        else if (strcmp(sub, "off")     == 0) { ret = cmd_tv_key(ip, "KEY_POWEROFF");}
+        else if (strcmp(sub, "source")  == 0) { ret = cmd_tv_key(ip, "KEY_SOURCE");  }
+        else if (strcmp(sub, "hdmi")    == 0) { ret = cmd_tv_key(ip, "KEY_HDMI");    }
+        else if (strcmp(sub, "channel") == 0) {
+            if (argc < 5) { fprintf(stderr, "tv channel: up|down required\n"); ret = 1; }
+            else if (strcmp(argv[4], "up") == 0)   ret = cmd_tv_key(ip, "KEY_CHUP");
+            else if (strcmp(argv[4], "down") == 0)  ret = cmd_tv_key(ip, "KEY_CHDOWN");
+            else { fprintf(stderr, "tv channel: up|down\n"); ret = 1; }
         } else {
-            fprintf(stderr, "Unknown ac subcommand: %s\n", argv[2]);
+            fprintf(stderr, "Unknown tv subcommand: %s\n", sub);
+            print_usage(argv[0]);
+            ret = 1;
+        }
+
+    /* ── printer ── */
+    } else if (strcmp(argv[1], "printer") == 0) {
+        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
+        const char *sub = argv[2];
+        const char *ip  = argv[3];
+
+        if (strcmp(sub, "probe") == 0) {
+            ret = cmd_printer_probe(ip);
+        } else if (strcmp(sub, "status") == 0) {
+            ret = cmd_printer_status(ip);
+        } else {
+            fprintf(stderr, "Unknown printer subcommand: %s\n", sub);
             print_usage(argv[0]);
             ret = 1;
         }
@@ -408,6 +877,7 @@ int main(int argc, char *argv[])
         ret = 1;
     }
 
+done:
     logger_close();
     return ret == 0 ? 0 : 1;
 }

@@ -6,7 +6,9 @@
  * @brief Gree AC LAN v2 protocol (UDP/7000, AES-128-ECB).
  */
 
+#ifndef GREE_PORT
 #define GREE_PORT            7000
+#endif
 #define GREE_DISCOVERY_KEY   "a3K8Bx%2r8Y7#xDh"  /* public protocol key */
 #define GREE_MAC_LEN         13   /* 12 hex chars + NUL */
 #define GREE_KEY_LEN         17   /* 16 char device key + NUL */
@@ -52,17 +54,23 @@ typedef enum {
 
 /** Full device status returned by gree_client_get_status. */
 typedef struct {
-    int         power;      /**< Pow:    0=off, 1=on */
-    int         set_temp;   /**< SetTem: 16-30 */
-    int         room_temp;  /**< TemSen: current room temperature (read-only) */
-    GreeMode    mode;       /**< Mod */
-    GreeFanSpeed fan;       /**< Wnd */
-    int         lights;     /**< Lig:   0=off, 1=on */
-    int         quiet;      /**< Quiet: 0=off, 1=on */
-    int         turbo;      /**< Tur:   0=off, 1=on */
-    int         sleep;      /**< SvSt:  0=off, 1=on */
-    GreeTempUnit temp_unit; /**< TemUn */
-    int         swing;      /**< SwUpDn */
+    int         power;          /**< Pow:          0=off, 1=on */
+    int         set_temp;       /**< SetTem:        16-30 */
+    int         room_temp;      /**< TemSen:        decoded Celsius (read-only) */
+    GreeMode    mode;           /**< Mod */
+    GreeFanSpeed fan;           /**< WdSpd:         0=auto,1-5 */
+    int         swing_v;        /**< SwUpDn:        0=fixed, 1=swing */
+    int         swing_h;        /**< SwingLfRig:    0=fixed, 1=swing, 2-6=position */
+    int         lights;         /**< Lig:           0=off, 1=on */
+    int         quiet;          /**< Quiet:         0=off, 1=on */
+    int         turbo;          /**< Tur:           0=off, 1=on */
+    int         sleep;          /**< SwhSlp:        0=off, 1=on */
+    int         xfan;           /**< Blo:           X-Fan / blow-dry */
+    int         air;            /**< Air:           fresh air */
+    int         health;         /**< Health:        anion */
+    int         steady_heat;    /**< StHt:          anti-freeze */
+    GreeTempUnit temp_unit;     /**< TemUn */
+    int         heat_cool_type; /**< HeatCoolType:  0=cool-only, 1=heat+cool (read-only) */
 } GreeStatus;
 
 /**

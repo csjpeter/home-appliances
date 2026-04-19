@@ -7,7 +7,9 @@
  *        Supported on pre-2016 Samsung Smart TV models.
  */
 
+#ifndef SAMSUNG_TV_PORT
 #define SAMSUNG_TV_PORT 55000
+#endif
 
 /**
  * @brief Check whether the TV is reachable on port 55000.

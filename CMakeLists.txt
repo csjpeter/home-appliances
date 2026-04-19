@@ -31,6 +31,7 @@ add_compile_definitions(HOME_APPLIANCES_VERSION="${GIT_VERSION}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 find_package(OpenSSL REQUIRED)
+find_package(Threads REQUIRED)
 
 enable_testing()
 
