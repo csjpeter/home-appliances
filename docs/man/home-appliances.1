@@ -8,13 +8,34 @@ home-appliances \- control home appliances from the command line
 .B home-appliances
 is a command-line tool for controlling home appliances on the local network.
 It supports Gree air conditioner units (UDP port 7000, AES-128-ECB, LAN v2 protocol),
-Roborock robot vacuum cleaners, Samsung smart TVs, and Brother network printers.
+Roborock robot vacuum cleaners (UDP port 54321, miio/AES-128-CBC),
+Samsung smart TVs (TCP port 55000, legacy protocol),
+and Brother network printers (UDP port 161, SNMPv1).
 .PP
-Devices are discovered on the
-.B 192.168.1.0/24
-subnet and their addresses are cached in the user configuration directory.
+.B Device discovery:
+Gree AC units are auto-discovered via UDP broadcast on the configured subnet
+(see
+.B CONFIGURATION
+below).
+Roborock, Samsung TV and Brother printer do
+.I not
+support broadcast discovery \[em] their IP address must be supplied manually
+(find it in the router's DHCP table or with
+.BR "nmap \-sn <network>" ).
+.PP
+After the first
+.B ac bind
+or
+.B vacuum status
+command the device credentials are cached in
+.I ~/.config/home-appliances/
+and do not need to be re-entered.
 .SH COMMANDS
 .SS General
+.TP
+.B list
+Broadcast-scan for Gree AC units on the local network and print the results.
+Other device types do not have auto-discovery; supply their IP directly.
 .TP
 .B version
 Print the program version and exit.
@@ -24,20 +45,23 @@ Print a help summary and exit.
 .SS AC (Gree)
 .TP
 .BI "ac list"
-Discover and list all Gree AC units on the local network.
-Stores found devices for later use.
+Broadcast-scan for Gree AC units on the subnet defined in
+.IR config.ini .
+Found devices are merged with the local device store.
 .TP
 .BI "ac bind " IP
-Bind to the Gree AC unit at the given
+Pair with the Gree AC unit at
 .I IP
-address and store the device key for subsequent commands.
+and save the device key to
+.I ~/.config/home-appliances/gree_devices
+for subsequent commands.
 .TP
 .BI "ac status " IP
 Print the full status of the AC unit at
 .IR IP .
 .TP
 .BI "ac temp " IP
-Print the current target temperature of the AC unit at
+Print the current room temperature reported by the AC unit at
 .IR IP .
 .TP
 .BI "ac on " IP
@@ -86,7 +110,7 @@ is one of:
 .BR right .
 .TP
 .BI "ac xfan " IP " " STATE
-Enable or disable the xfan feature on the AC unit at
+Enable or disable the xfan (dry-out) feature on the AC unit at
 .IR IP .
 .I STATE
 is
@@ -130,6 +154,9 @@ is
 or
 .BR fahrenheit .
 .SS Vacuum (Roborock)
+IP address must be supplied manually (no broadcast discovery).
+The token is obtained automatically from the device on first contact and cached in
+.IR ~/.config/home-appliances/roborock_devices .
 .TP
 .BI "vacuum status " IP
 Print the current status of the robot vacuum at
@@ -173,13 +200,14 @@ is one of:
 .BR silent ,
 .BR balanced ,
 .BR turbo ,
-.BR max .
+.BR max ,
+.BR gentle .
 .TP
-.BI "vacuum reset-main " IP
+.BI "vacuum reset-brush " IP
 Reset the main brush consumable counter on the vacuum at
 .IR IP .
 .TP
-.BI "vacuum reset-side " IP
+.BI "vacuum reset-side-brush " IP
 Reset the side brush consumable counter on the vacuum at
 .IR IP .
 .TP
@@ -191,26 +219,34 @@ Reset the filter consumable counter on the vacuum at
 Reset the sensor consumable counter on the vacuum at
 .IR IP .
 .SS TV (Samsung)
+IP address must be supplied manually (no broadcast discovery).
+On first connection the TV may display a pairing prompt; accept it on the TV screen.
 .TP
 .BI "tv probe " IP
 Probe the Samsung TV at
 .I IP
 and print device information.
 .TP
-.BI "tv key " IP " " KEY
-Send a remote control key press to the TV at
-.IR IP .
+.BI "tv key " IP " " "KEY ..."
+Send one or more remote control key presses to the TV at
+.IR IP
+(300 ms gap between keys).
 .I KEY
-is any Samsung remote key name (e.g.
+is any Samsung remote key name, e.g.\&
 .BR KEY_POWER ,
-.BR KEY_VOLUMEUP ).
+.BR KEY_VOLUMEUP ,
+.BR KEY_HOME .
 .TP
-.BI "tv volup " IP
-Increase the volume by one step on the TV at
+.BI "tv volup " IP " [" N ]
+Increase the volume by
+.I N
+steps (default 1) on the TV at
 .IR IP .
 .TP
-.BI "tv voldown " IP
-Decrease the volume by one step on the TV at
+.BI "tv voldown " IP " [" N ]
+Decrease the volume by
+.I N
+steps (default 1) on the TV at
 .IR IP .
 .TP
 .BI "tv mute " IP
@@ -241,54 +277,96 @@ Tune the TV at
 to channel number
 .IR CH .
 .SS Printer (Brother)
+IP address must be supplied manually (no broadcast discovery).
 .TP
 .BI "printer probe " IP
 Probe the Brother printer at
 .I IP
-and print device information.
+and print model information.
 .TP
-.BI "printer status " IP
+.BI "printer status " IP " [" \-\-quiet ]
 Print the current status of the printer at
-.IR IP .
+.IR IP
+(state, toner level, page count).
+With
+.BR \-\-quiet ,
+exits with code 2 if the printer reports a warning or error condition.
 .TP
-.BI "printer toner " IP
+.BI "printer toner " IP " [" \-\-raw ]
 Print the toner level of the printer at
-.IR IP .
+.IR IP
+as a percentage.
+With
+.BR \-\-raw ,
+print the raw integer value instead.
 .TP
 .BI "printer pages " IP
-Print the page counter of the printer at
+Print the total page counter of the printer at
 .IR IP .
 .TP
 .BI "printer consumables " IP
-Print the consumable levels of the printer at
+Print toner, drum and maintenance kit levels of the printer at
 .IR IP .
 .SH OPTIONS
 .TP
-.BR \-v ", " \-\-verbose
+.BR \-v ", " \-\-verbose ", " \-\-debug ", " \-d
 Enable verbose output. Additional diagnostic messages are printed to standard error.
+May be placed before any command.
 .TP
 .B \-\-version
 Print the program version and exit.
 .TP
 .B \-\-help
 Print a help summary and exit.
+.SH CONFIGURATION
+Configuration is read from
+.IR ~/.config/home-appliances/config.ini .
+The file is created with defaults on first run if it does not exist.
+.PP
+.B Keys:
 .TP
-.B \-\-quiet
-Suppress all output except errors. When used with
-.BR "printer status" ,
-exits with status 2 if the printer reports a device error state.
+.B network
+The subnet used for Gree AC broadcast discovery, in CIDR notation.
+Default:
+.BR 192.168.1.0/24 .
+.TP
+.B iface
+The network interface name (informational; used for display only).
+Default:
+.BR wlan0 .
+.TP
+.B discovery_timeout_ms
+How long to wait for responses during a broadcast scan, in milliseconds.
+Default:
+.BR 5000 .
+.PP
+Example
+.IR config.ini :
+.PP
+.RS
+.EX
+network=192.168.0.0/24
+iface=eth0
+discovery_timeout_ms=3000
+.EE
+.RE
 .SH FILES
 .TP
-.I ~/.config/home-appliances/config
-Main configuration file. Stores preferences such as default subnet and logging level.
+.I ~/.config/home-appliances/config.ini
+Main configuration file (network subnet, interface, scan timeout).
 .TP
 .I ~/.config/home-appliances/gree_devices
-Cached list of discovered Gree AC units (IP address and device key pairs).
+Cached Gree AC device list (IP, MAC, device key). Mode 0600.
 Updated by
-.BR "ac list" " and " "ac bind" .
+.B ac list
+and
+.BR "ac bind" .
 .TP
 .I ~/.config/home-appliances/roborock_devices
-Cached list of discovered Roborock vacuum cleaners (IP address and token pairs).
+Cached Roborock device list (IP, token, device ID). Mode 0600.
+Updated automatically on first
+.B vacuum
+command.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -298,13 +376,11 @@ Success.
 General error (invalid arguments, network failure, device unreachable, etc.).
 .TP
 .B 2
-Device error state. Only returned by
-.B "printer status"
-when the
-.B \-\-quiet
-option is given and the printer reports an error condition.
+Device warning/error state. Only returned by
+.B "printer status \-\-quiet"
+when the printer reports a non-OK condition.
 .SH EXAMPLES
-Discover all Gree AC units on the local network:
+Discover Gree AC units on the configured subnet:
 .PP
 .RS
 .EX
@@ -312,21 +388,28 @@ home-appliances ac list
 .EE
 .RE
 .PP
-Bind to an AC unit and then set it to 22 degrees:
+Bind to an AC unit, then set it to 22 °C in cool mode:
 .PP
 .RS
 .EX
 home-appliances ac bind 192.168.1.50
-home-appliances ac set 192.168.1.50 22
+home-appliances ac set 192.168.1.50 temp=22 mode=cool
 .EE
 .RE
 .PP
-Turn on the AC unit and enable health mode:
+Check vacuum status (token is cached automatically):
 .PP
 .RS
 .EX
-home-appliances ac on 192.168.1.50
-home-appliances ac health 192.168.1.50 on
+home-appliances vacuum status 192.168.1.70
+.EE
+.RE
+.PP
+Find devices not supported by auto-discovery:
+.PP
+.RS
+.EX
+nmap -sn 192.168.1.0/24
 .EE
 .RE
 .PP
@@ -338,19 +421,11 @@ home-appliances vacuum dock 192.168.1.70
 .EE
 .RE
 .PP
-Check vacuum consumable levels:
+Send multiple key presses to the TV:
 .PP
 .RS
 .EX
-home-appliances vacuum consumables 192.168.1.70
-.EE
-.RE
-.PP
-Switch the TV to HDMI 2:
-.PP
-.RS
-.EX
-home-appliances tv hdmi 192.168.1.80 2
+home-appliances tv key 192.168.1.80 KEY_HOME KEY_UP KEY_ENTER
 .EE
 .RE
 .PP
@@ -362,14 +437,22 @@ home-appliances -v printer toner 192.168.1.90
 .EE
 .RE
 .PP
-Check printer status quietly (exit code 2 if printer error):
+Check printer status silently (exit 2 if warning):
 .PP
 .RS
 .EX
-home-appliances --quiet printer status 192.168.1.90
+home-appliances printer status --quiet 192.168.1.90
+.EE
+.RE
+.PP
+Change the scan subnet (edit config, no recompile needed):
+.PP
+.RS
+.EX
+echo 'network=10.0.0.0/24' >> ~/.config/home-appliances/config.ini
 .EE
 .RE
 .SH SEE ALSO
-.BR gree (7),
+.BR nmap (1),
 .BR avahi-browse (1),
-.BR nmap (1)
+.BR snmpget (1)
