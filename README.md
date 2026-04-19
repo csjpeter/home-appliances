@@ -1,3 +1,8 @@
+[![CI](https://github.com/csjpeter/home-appliances/actions/workflows/ci.yml/badge.svg)](https://github.com/csjpeter/home-appliances/actions/workflows/ci.yml)
+[![Valgrind](https://github.com/csjpeter/home-appliances/actions/workflows/valgrind.yml/badge.svg)](https://github.com/csjpeter/home-appliances/actions/workflows/valgrind.yml)
+[![Coverage](https://csjpeter.github.io/home-appliances/coverage-badge.svg)](https://csjpeter.github.io/home-appliances/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 # home-appliances
 
 Command-line tool for local network control of home appliances, written in C11.

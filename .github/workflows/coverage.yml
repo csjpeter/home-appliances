@@ -1,0 +1,47 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libssl-dev lcov
+
+      - name: Generate coverage report
+        run: ./manage.sh coverage
+
+      - name: Generate coverage badge
+        run: |
+          pip install genbadge[coverage] lcov_cobertura --quiet
+          lcov_cobertura build-Coverage/coverage.info -o build-Coverage/coverage.xml
+          genbadge coverage -i build-Coverage/coverage.xml -o build-Coverage/coverage-report/coverage-badge.svg
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build-Coverage/coverage-report
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
