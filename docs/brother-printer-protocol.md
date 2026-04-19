@@ -24,6 +24,14 @@ Reference: [BRN-Printer-sCounters-Info](https://github.com/saper-2/BRN-Printer-s
 | `1.3.6.1.2.1.25.3.5.1.1.1`     | Printer status (3=idle, 4=printing, 5=error) |
 | `1.3.6.1.2.1.43.11.1.1.9.1.1`  | Black toner remaining %          |
 
+### Standard MIB additional OIDs
+
+| OID                              | Description                                     |
+|----------------------------------|-------------------------------------------------|
+| `1.3.6.1.2.1.25.3.2.1.5.1`      | hrPrinterStatus: 3=idle, 4=printing, 5=stopped  |
+| `1.3.6.1.2.1.43.11.1.1.8.1.1`   | prtMarkerSuppliesMaxCapacity (for % calc)       |
+| `1.3.6.1.2.1.1.1.0`              | sysDescr — model string, use for probe/detect   |
+
 ### Brother proprietary OIDs
 
 | OID                                    | Description                       |
@@ -32,6 +40,16 @@ Reference: [BRN-Printer-sCounters-Info](https://github.com/saper-2/BRN-Printer-s
 | `1.3.6.1.4.1.2435.2.3.9.4.2.1.5.5.10` | Counter data (hex-encoded records) |
 | `1.3.6.1.4.1.2435.2.3.9.4.2.1.5.5.11` | Pages until next maintenance       |
 | `1.3.6.1.4.1.2435.2.3.9.1.1.2.10.1`   | Toner low flag (0=ok, 1=low, 2=absent, 3=empty) |
+
+### OctetString decoding (brInfoMaintenance / brInfoCounter)
+
+Brother returns `5.5.8` and `5.5.10` as raw OctetStrings (hex byte arrays).
+The byte layout is model-specific. For many laser models:
+- Each consumable is a 16-bit LE integer in units of 0.01 % (10000 = 100%).
+- Specific byte offsets documented in:
+  [BRN-Printer-sCounters-Info](https://github.com/saper-2/BRN-Printer-sCounters-Info)
+
+Fallback: use standard MIB `1.3.6.1.2.1.43.11.1.1.9.1.1` / `.8.1.1` for toner %.
 
 ### SNMP packet (raw UDP, no library)
 
@@ -78,6 +96,31 @@ Useful attributes returned:
 IPP endpoint URL: `http://<ip>:631/ipp` or `http://<ip>:631/ipp/print`
 
 ---
+
+## Capability overview
+
+| Capability               | SNMP | IPP | HTTP | Notes                                  |
+|--------------------------|------|-----|------|----------------------------------------|
+| Printer state            | Yes  | Yes | Yes  | Standard MIB + IPP `printer-state`    |
+| Toner level %            | Yes  | Yes | Yes  | Standard MIB; IPP `marker-levels`     |
+| Page count               | Yes  | No  | Yes  | `prtMarkerLifeCount`                   |
+| Drum / consumable life   | Yes  | No  | Yes  | Brother OIDs `5.5.8`, `5.5.11`        |
+| Error / jam state        | Yes* | Yes | Yes  | *Requires OctetString decoding         |
+| Toner low flag           | Yes  | Yes | Yes  | `brToner1Low`; IPP `printer-state-reasons` |
+| Counter reset            | No   | No  | No   | Manual control panel only              |
+| Print job submission     | No   | Yes | No   | IPP Print-Job                          |
+| Settings change          | No   | No  | Yes* | *Only via EWS web UI, not programmatic |
+| SNMP traps               | Yes  | No  | No   | Configurable via EWS → UDP 162         |
+
+## References
+
+- [BRN-Printer-sCounters-Info](https://github.com/saper-2/BRN-Printer-sCounters-Info)
+- [Monitoring Brother SNMP toner](https://www.claudiokuenzler.com/blog/1422/monitoring-brother-printer-snmp-alert-low-toner)
+- [BROTHER-MIB browser](https://mibbrowser.online/mibdb_search.php?mib=BROTHER-MIB)
+- [OID reference 2435](http://oidref.com/1.3.6.1.4.1.2435)
+- [Home Assistant Brother integration](https://www.home-assistant.io/integrations/brother/)
+- [Domotz Brother SNMP sensors](https://www.domotz.com/integrations/hardware/printers/brother.php)
+- [RFC 8011 — IPP/1.1](https://www.rfc-editor.org/rfc/rfc8011)
 
 ## Implementation plan for C
 

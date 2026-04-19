@@ -57,28 +57,63 @@ Encrypted with AES-128-CBC (PKCS#7 padding), then placed at offset 32.
 
 `id` is an incrementing request counter. Response contains the same `id`.
 
-## Essential commands
+## Commands
 
-| Method              | Params | Description                   |
-|---------------------|--------|-------------------------------|
-| `app_start`         | `[]`   | Start cleaning                |
-| `app_stop`          | `[]`   | Stop                          |
-| `app_pause`         | `[]`   | Pause                         |
-| `app_charge_home`   | `[]`   | Return to dock                |
-| `get_status`        | `[]`   | Full status (see below)       |
+### Cleaning control
+
+| Method              | Params              | Description                          |
+|---------------------|---------------------|--------------------------------------|
+| `app_start`         | `[]`                | Start full-house cleaning            |
+| `app_stop`          | `[]`                | Stop                                 |
+| `app_pause`         | `[]`                | Pause (can resume)                   |
+| `app_charge`        | `[]`                | Return to dock                       |
+| `app_spot`          | `[]`                | Spot clean at current location       |
+| `find_device`       | `[]`                | Trigger audible/light locator        |
+| `set_custom_mode`   | `[101–105]`         | Fan speed: 101=Silent, 102=Balanced, 103=Turbo, 104=Max, 105=Gentle |
+| `reset_consumable`  | `["<item>"]`        | Reset consumable counter (see below) |
+
+### Consumable reset items
+
+| Parameter string           | Part                  | Replacement interval |
+|----------------------------|-----------------------|----------------------|
+| `"main_brush_work_time"`   | Main brush            | 300 h                |
+| `"side_brush_work_time"`   | Side brush            | 200 h                |
+| `"filter_work_time"`       | Filter                | 150 h                |
+| `"sensor_dirty_time"`      | Cliff/wall sensors    | 30 h                 |
+
+### Status and info
+
+| Method           | Params | Description                     |
+|------------------|--------|---------------------------------|
+| `get_status`     | `[]`   | Full status (see below)         |
+| `get_consumable` | `[]`   | Consumable usage in seconds     |
 
 ## Status response fields
 
 `get_status` returns an object with (among others):
 
-| Key         | Type | Description                          |
-|-------------|------|--------------------------------------|
-| `battery`   | int  | Battery percentage 0–100             |
-| `state`     | int  | 1=initiating, 2=sleeping, 3=idle, 5=cleaning, 6=returning, 8=charging, 11=error, 16=shutdown |
-| `error_code`| int  | 0=no error                           |
-| `clean_time`| int  | Seconds of current/last clean        |
-| `clean_area`| int  | Area cleaned in cm²                  |
-| `in_cleaning`| int | 1 if currently cleaning              |
+| Key          | Type | Description                                                         |
+|--------------|------|---------------------------------------------------------------------|
+| `battery`    | int  | Battery percentage 0–100                                            |
+| `state`      | int  | 1=init, 2=sleep, 3=idle, 5=cleaning, 6=returning, 8=charging, 11=error, 16=shutdown |
+| `error_code` | int  | 0=no error; see error code table in issue 001                       |
+| `clean_time` | int  | Seconds of current/last clean                                       |
+| `clean_area` | int  | Area cleaned in cm²                                                 |
+| `fan_power`  | int  | 101=Silent, 102=Balanced, 103=Turbo, 104=Max, 105=Gentle           |
+| `in_cleaning`| int  | 1 if currently cleaning                                             |
+| `map_present`| int  | 1 if a map has been built                                           |
+| `dnd_enabled`| int  | Do Not Disturb mode active                                          |
+
+## Consumable response fields
+
+`get_consumable` returns:
+
+| Key                        | Type | Threshold (seconds) |
+|----------------------------|------|---------------------|
+| `main_brush_work_time`     | int  | 1 080 000 (300 h)  |
+| `side_brush_work_time`     | int  | 720 000 (200 h)    |
+| `filter_work_time`         | int  | 540 000 (150 h)    |
+| `sensor_dirty_time`        | int  | 108 000 (30 h)     |
 
 ## Token extraction options
 
@@ -95,6 +130,15 @@ Encrypted with AES-128-CBC (PKCS#7 padding), then placed at offset 32.
 - Token storage: persist after first hello, re-use for all subsequent commands
 - Timestamp field: use `time(NULL)` or a monotonic counter
 - UDP socket: unicast to device IP (not broadcast), port 54321
+
+## References
+
+- [mihome-binary-protocol](https://github.com/OpenMiHome/mihome-binary-protocol)
+- [python-miio](https://github.com/rytilahti/python-miio)
+- [XiaomiRobotVacuumProtocol](https://github.com/marcelrv/XiaomiRobotVacuumProtocol)
+- [python-roborock API commands](https://python-roborock.readthedocs.io/en/latest/api_commands.html)
+- [Home Assistant Roborock integration](https://www.home-assistant.io/integrations/roborock/)
+- [Socket API walkthrough](https://www.albertopasca.it/whiletrue/xiaomi-roborock-control-via-socket-api/)
 
 ## Dependency on binding
 

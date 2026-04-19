@@ -49,24 +49,112 @@ After auth is granted, send for each key press:
 b64(key_code)             -- base64-encoded key name string
 ```
 
-## Key codes
+## Key codes (complete list)
 
-| Key code          | Action              |
-|-------------------|---------------------|
-| `KEY_POWER`       | Power toggle (or `KEY_POWEROFF` on some models) |
-| `KEY_VOLUP`       | Volume up           |
-| `KEY_VOLDOWN`     | Volume down         |
-| `KEY_MUTE`        | Mute                |
-| `KEY_ENTER`       | OK / Select         |
-| `KEY_RETURN`      | Back                |
-| `KEY_MENU`        | Menu                |
-| `KEY_HOME`        | Home                |
-| `KEY_UP/DOWN/LEFT/RIGHT` | Navigation    |
-| `KEY_CHUP`        | Channel up          |
-| `KEY_CHDOWN`      | Channel down        |
-| `KEY_0`–`KEY_9`   | Digit keys          |
-| `KEY_SOURCE`      | Input source        |
-| `KEY_HDMI`        | HDMI input          |
+### Power
+| Key code       | Action                         |
+|----------------|--------------------------------|
+| `KEY_POWER`    | Power toggle                   |
+| `KEY_POWEROFF` | Power off (pre-2016 models)    |
+| `KEY_POWERON`  | Power on (pre-2016)            |
+
+### Volume & audio
+| Key code     | Action       |
+|--------------|--------------|
+| `KEY_VOLUP`  | Volume up    |
+| `KEY_VOLDOWN`| Volume down  |
+| `KEY_MUTE`   | Mute toggle  |
+
+### Navigation
+| Key code                        | Action      |
+|---------------------------------|-------------|
+| `KEY_UP` / `KEY_DOWN`           | Up / Down   |
+| `KEY_LEFT` / `KEY_RIGHT`        | Left / Right|
+| `KEY_ENTER`                     | OK / Select |
+| `KEY_RETURN`                    | Back        |
+| `KEY_EXIT`                      | Exit        |
+
+### Channels
+| Key code      | Action              |
+|---------------|---------------------|
+| `KEY_CHUP`    | Channel up          |
+| `KEY_CHDOWN`  | Channel down        |
+| `KEY_PRECH`   | Previous channel    |
+| `KEY_FAVCH`   | Favourite channels  |
+| `KEY_CH_LIST` | Channel list        |
+
+### Input / source
+| Key code         | Action              |
+|------------------|---------------------|
+| `KEY_SOURCE`     | Source selection    |
+| `KEY_HDMI`       | HDMI input          |
+| `KEY_TV`         | TV / antenna input  |
+| `KEY_AV1`        | AV1 input           |
+| `KEY_AV2`        | AV2 input           |
+| `KEY_COMPONENT1` | Component 1         |
+| `KEY_COMPONENT2` | Component 2         |
+| `KEY_DVI`        | DVI input           |
+
+### Digit keys
+`KEY_0` through `KEY_9`, `KEY_11`, `KEY_12`
+
+### Menu navigation
+| Key code    | Action    |
+|-------------|-----------|
+| `KEY_MENU`  | Menu      |
+| `KEY_HOME`  | Home      |
+| `KEY_TOOLS` | Tools     |
+| `KEY_INFO`  | Info      |
+| `KEY_GUIDE` | Guide     |
+| `KEY_HELP`  | Help      |
+
+### Media playback
+| Key code             | Action          |
+|----------------------|-----------------|
+| `KEY_PLAY`           | Play            |
+| `KEY_PAUSE`          | Pause           |
+| `KEY_STOP`           | Stop            |
+| `KEY_FF`             | Fast forward    |
+| `KEY_REWIND`         | Rewind          |
+| `KEY_REC`            | Record          |
+
+### Picture
+| Key code        | Action           |
+|-----------------|------------------|
+| `KEY_PMODE`     | Picture mode     |
+| `KEY_ASPECT`    | Aspect ratio     |
+| `KEY_PANORAMA`  | Panorama mode    |
+| `KEY_ZOOM_IN`   | Zoom in          |
+| `KEY_ZOOM_OUT`  | Zoom out         |
+| `KEY_PIP_ONOFF` | Picture-in-picture toggle |
+| `KEY_PIP_SWAP`  | PIP swap         |
+
+### Colour / teletext
+| Key code    | Action        |
+|-------------|---------------|
+| `KEY_RED`   | Red           |
+| `KEY_GREEN` | Green         |
+| `KEY_YELLOW`| Yellow        |
+| `KEY_CYAN`  | Cyan          |
+| `KEY_TELETEXT` | Teletext   |
+
+## Capability overview
+
+| Capability                | TCP/55000 (pre-2016) | Notes                                       |
+|---------------------------|----------------------|---------------------------------------------|
+| Power state detection     | No                   | TCP connect = on/standby; refused = off     |
+| Volume / mute read        | No                   | Write-only protocol                         |
+| Channel / input read      | No                   | Write-only protocol                         |
+| Remote key sending        | Yes (100+ codes)     | Full key set supported                      |
+| App launching             | No                   | Only available on 2016+ Tizen REST API      |
+| Status feedback per key   | No                   | Fire-and-forget                             |
+
+## References
+
+- [samsungctl](https://github.com/Ape/samsungctl)
+- [Home Assistant key codes](https://github.com/ollo69/ha-samsungtv-smart/blob/master/docs/Key_codes.md)
+- [SamyGO wiki](https://wiki.samygo.tv/index.php?title=Samsung_TV_network_remote_control_protocol)
+- [openHAB Samsung TV binding](https://www.openhab.org/addons/bindings/samsungtv/)
 
 ## Implementation notes for C
 
