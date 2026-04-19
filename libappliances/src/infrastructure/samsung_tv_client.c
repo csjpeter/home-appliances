@@ -13,10 +13,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define SAMSUNG_TV_APP_STRING    "iphone.iapp.samsung"
@@ -428,5 +431,187 @@ int samsung_tv_send_keys(const char *ip, const char **keys, int delay_ms)
         }
         LOG_INFO_MSG("samsung_tv_send_keys: sent '%s' to %s", keys[i], ip);
     }
+    return 0;
+}
+
+/* ── Store path ───────────────────────────────────────────────────────────── */
+
+#include "../core/subnet_scan.h"
+
+#define TV_STORE_FMT  "%s/.config/home-appliances/tv_devices"
+
+/* ── samsung_tv_load ──────────────────────────────────────────────────────── */
+
+int samsung_tv_load(SamsungTvDeviceList *out)
+{
+    if (!out)
+        return -1;
+    out->devices = NULL;
+    out->count   = 0;
+
+    const char *home = getenv("HOME");
+    if (!home)
+        return -1;
+
+    char path[600];
+    snprintf(path, sizeof(path), TV_STORE_FMT, home);
+
+    RAII_FILE FILE *f = fopen(path, "r");
+    if (!f)
+        return 0; /* not found — not an error */
+
+    char line[256];
+    while (fgets(line, sizeof(line), f))
+    {
+        if (line[0] == '#' || line[0] == '\n')
+            continue;
+
+        char *nl = strchr(line, '\n');
+        if (nl)
+            *nl = '\0';
+
+        char *sp = strchr(line, ' ');
+
+        char ip_buf[16]       = {0};
+        char model_buf[TV_MODEL_LEN] = {0};
+
+        if (sp)
+        {
+            size_t ip_len = (size_t)(sp - line);
+            if (ip_len == 0 || ip_len > 15)
+                continue;
+            memcpy(ip_buf, line, ip_len);
+            ip_buf[ip_len] = '\0';
+            strncpy(model_buf, sp + 1, sizeof(model_buf) - 1);
+        }
+        else
+        {
+            if (line[0] == '\0' || strlen(line) > 15)
+                continue;
+            strncpy(ip_buf, line, sizeof(ip_buf) - 1);
+        }
+
+        SamsungTvDevice *tmp = realloc(out->devices,
+                                       (size_t)(out->count + 1) * sizeof(*tmp));
+        if (!tmp)
+            break;
+        out->devices = tmp;
+        SamsungTvDevice dev = {0};
+        snprintf(dev.ip,    sizeof(dev.ip),    "%s", ip_buf);
+        snprintf(dev.model, sizeof(dev.model), "%s", model_buf);
+        out->devices[out->count++] = dev;
+    }
+
+    return 0;
+}
+
+/* ── samsung_tv_save ──────────────────────────────────────────────────────── */
+
+int samsung_tv_save(const SamsungTvDeviceList *list)
+{
+    if (!list)
+        return -1;
+
+    const char *home = getenv("HOME");
+    if (!home)
+        return -1;
+
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/.config/home-appliances", home);
+    (void)mkdir(dir, 0700);
+
+    char path[600];
+    snprintf(path, sizeof(path), TV_STORE_FMT, home);
+
+    RAII_FILE FILE *f = fopen(path, "w");
+    if (!f)
+    {
+        LOG_ERROR_MSG("samsung_tv_save: cannot open %s: %s", path, strerror(errno));
+        return -1;
+    }
+    chmod(path, 0600);
+
+    fputs("# ip model\n", f);
+    for (int i = 0; i < list->count; i++)
+        fprintf(f, "%s %s\n", list->devices[i].ip, list->devices[i].model);
+
+    return 0;
+}
+
+/* ── samsung_tv_device_list_free ─────────────────────────────────────────── */
+
+void samsung_tv_device_list_free(SamsungTvDeviceList *list)
+{
+    if (!list)
+        return;
+    free(list->devices);
+    list->devices = NULL;
+    list->count   = 0;
+}
+
+/* ── samsung_tv_is_known ─────────────────────────────────────────────────── */
+
+int samsung_tv_is_known(const char *ip)
+{
+    if (!ip)
+        return -1;
+
+    SamsungTvDeviceList list = {0};
+    if (samsung_tv_load(&list) != 0)
+        return -1;
+
+    int found = 0;
+    for (int i = 0; i < list.count; i++)
+    {
+        if (strcmp(list.devices[i].ip, ip) == 0)
+        {
+            found = 1;
+            break;
+        }
+    }
+    samsung_tv_device_list_free(&list);
+    return found;
+}
+
+/* ── samsung_tv_scan ─────────────────────────────────────────────────────── */
+
+typedef struct
+{
+    pthread_mutex_t  mu;
+    SamsungTvDeviceList list;
+} TvScanCtx;
+
+static int tv_probe_cb(const char *ip, void *ctx)
+{
+    int r = samsung_tv_probe(ip);
+    if (r != 1)
+        return 0;
+
+    TvScanCtx *c = ctx;
+    pthread_mutex_lock(&c->mu);
+    SamsungTvDevice *tmp = realloc(c->list.devices,
+                                   (size_t)(c->list.count + 1) * sizeof(*tmp));
+    if (tmp)
+    {
+        c->list.devices = tmp;
+        SamsungTvDevice dev = {0};
+        strncpy(dev.ip,    ip, sizeof(dev.ip)    - 1);
+        dev.model[0] = '\0';
+        c->list.devices[c->list.count++] = dev;
+    }
+    pthread_mutex_unlock(&c->mu);
+    return 1;
+}
+
+int samsung_tv_scan(const char *cidr, SamsungTvDeviceList *out)
+{
+    if (!cidr || !out)
+        return -1;
+
+    TvScanCtx ctx = {0};
+    pthread_mutex_init(&ctx.mu, NULL);
+    subnet_scan(cidr, tv_probe_cb, &ctx);
+    pthread_mutex_destroy(&ctx.mu);
+    *out = ctx.list;
     return 0;
 }

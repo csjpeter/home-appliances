@@ -9,14 +9,18 @@
 
 #include "brother_client.h"
 #include "../core/logger.h"
+#include "../core/raii.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 /* ── OID definitions ─────────────────────────────────────────────────────── */
@@ -776,5 +780,187 @@ int brother_get_consumables(const char *ip, BrotherConsumables *out)
         out->pages_until_maint = (int)le;
     }
 
+    return 0;
+}
+
+/* ── Store path ───────────────────────────────────────────────────────────── */
+
+#include "../core/subnet_scan.h"
+
+#define PRINTER_STORE_FMT  "%s/.config/home-appliances/printer_devices"
+
+/* ── brother_load ─────────────────────────────────────────────────────────── */
+
+int brother_load(BrotherDeviceList *out)
+{
+    if (!out)
+        return -1;
+    out->devices = NULL;
+    out->count   = 0;
+
+    const char *home = getenv("HOME");
+    if (!home)
+        return -1;
+
+    char path[600];
+    snprintf(path, sizeof(path), PRINTER_STORE_FMT, home);
+
+    RAII_FILE FILE *f = fopen(path, "r");
+    if (!f)
+        return 0; /* not found — not an error */
+
+    char line[256];
+    while (fgets(line, sizeof(line), f))
+    {
+        if (line[0] == '#' || line[0] == '\n')
+            continue;
+
+        char *nl = strchr(line, '\n');
+        if (nl)
+            *nl = '\0';
+
+        char *sp = strchr(line, ' ');
+
+        char ip_buf[16]              = {0};
+        char model_buf[PRINTER_MODEL_LEN] = {0};
+
+        if (sp)
+        {
+            size_t ip_len = (size_t)(sp - line);
+            if (ip_len == 0 || ip_len > 15)
+                continue;
+            memcpy(ip_buf, line, ip_len);
+            ip_buf[ip_len] = '\0';
+            strncpy(model_buf, sp + 1, sizeof(model_buf) - 1);
+        }
+        else
+        {
+            if (line[0] == '\0' || strlen(line) > 15)
+                continue;
+            strncpy(ip_buf, line, sizeof(ip_buf) - 1);
+        }
+
+        BrotherDevice *tmp = realloc(out->devices,
+                                     (size_t)(out->count + 1) * sizeof(*tmp));
+        if (!tmp)
+            break;
+        out->devices = tmp;
+        BrotherDevice dev = {0};
+        snprintf(dev.ip,    sizeof(dev.ip),    "%s", ip_buf);
+        snprintf(dev.model, sizeof(dev.model), "%s", model_buf);
+        out->devices[out->count++] = dev;
+    }
+
+    return 0;
+}
+
+/* ── brother_save ─────────────────────────────────────────────────────────── */
+
+int brother_save(const BrotherDeviceList *list)
+{
+    if (!list)
+        return -1;
+
+    const char *home = getenv("HOME");
+    if (!home)
+        return -1;
+
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/.config/home-appliances", home);
+    (void)mkdir(dir, 0700);
+
+    char path[600];
+    snprintf(path, sizeof(path), PRINTER_STORE_FMT, home);
+
+    RAII_FILE FILE *f = fopen(path, "w");
+    if (!f)
+    {
+        LOG_ERROR_MSG("brother_save: cannot open %s: %s", path, strerror(errno));
+        return -1;
+    }
+    chmod(path, 0600);
+
+    fputs("# ip model\n", f);
+    for (int i = 0; i < list->count; i++)
+        fprintf(f, "%s %s\n", list->devices[i].ip, list->devices[i].model);
+
+    return 0;
+}
+
+/* ── brother_device_list_free ─────────────────────────────────────────────── */
+
+void brother_device_list_free(BrotherDeviceList *list)
+{
+    if (!list)
+        return;
+    free(list->devices);
+    list->devices = NULL;
+    list->count   = 0;
+}
+
+/* ── brother_is_known ─────────────────────────────────────────────────────── */
+
+int brother_is_known(const char *ip)
+{
+    if (!ip)
+        return -1;
+
+    BrotherDeviceList list = {0};
+    if (brother_load(&list) != 0)
+        return -1;
+
+    int found = 0;
+    for (int i = 0; i < list.count; i++)
+    {
+        if (strcmp(list.devices[i].ip, ip) == 0)
+        {
+            found = 1;
+            break;
+        }
+    }
+    brother_device_list_free(&list);
+    return found;
+}
+
+/* ── brother_scan ─────────────────────────────────────────────────────────── */
+
+typedef struct
+{
+    pthread_mutex_t   mu;
+    BrotherDeviceList list;
+} PrinterScanCtx;
+
+static int printer_probe_cb(const char *ip, void *ctx)
+{
+    PrinterScanCtx *c = ctx;
+    char model[64] = {0};
+    int r = brother_probe(ip, model, sizeof(model));
+    if (r != 1)
+        return 0;
+    pthread_mutex_lock(&c->mu);
+    BrotherDevice *tmp = realloc(c->list.devices,
+                                 (size_t)(c->list.count + 1) * sizeof(*tmp));
+    if (tmp)
+    {
+        c->list.devices = tmp;
+        BrotherDevice dev = {0};
+        snprintf(dev.ip,    sizeof(dev.ip),    "%s", ip);
+        snprintf(dev.model, sizeof(dev.model), "%s", model);
+        c->list.devices[c->list.count++] = dev;
+    }
+    pthread_mutex_unlock(&c->mu);
+    return 1;
+}
+
+int brother_scan(const char *cidr, BrotherDeviceList *out)
+{
+    if (!cidr || !out)
+        return -1;
+
+    PrinterScanCtx ctx = {0};
+    pthread_mutex_init(&ctx.mu, NULL);
+    subnet_scan(cidr, printer_probe_cb, &ctx);
+    pthread_mutex_destroy(&ctx.mu);
+    *out = ctx.list;
     return 0;
 }

@@ -112,4 +112,31 @@ int roborock_save(const RoborockDevice *dev);
  */
 int roborock_load(const char *ip, RoborockDevice *dev);
 
+/**
+ * @brief Load ALL device entries from roborock_devices store.
+ * @param out   Output array (malloc'd); caller must free(*out).
+ * @param count Output count.
+ * @return 0 on success, -1 on I/O error.
+ */
+int roborock_load_all(RoborockDevice **out, int *count);
+
+/**
+ * @brief Check whether ip appears in the roborock_devices store.
+ * @return 1 if found, 0 if not, -1 on I/O error.
+ */
+int roborock_is_known(const char *ip);
+
+/**
+ * @brief Scan a subnet for Roborock vacuums via miio hello packets.
+ *        Found devices have their token saved automatically via roborock_save().
+ * @param cidr      CIDR subnet, e.g. "192.168.1.0/24".
+ * @param out       Output array (malloc'd); caller must free with roborock_scan_free().
+ * @param out_count Output count.
+ * @return 0 on success (empty list OK), -1 on fatal error.
+ */
+int roborock_scan(const char *cidr, RoborockDevice **out, int *out_count);
+
+/** @brief Free array returned by roborock_scan. */
+void roborock_scan_free(RoborockDevice *list);
+
 #endif /* ROBOROCK_CLIENT_H */

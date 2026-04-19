@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <openssl/evp.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -683,4 +684,130 @@ int roborock_load(const char *ip, RoborockDevice *dev)
     }
 
     return 1; /* not found */
+}
+
+/* ── roborock_load_all ────────────────────────────────────────────────────── */
+
+#include "../core/subnet_scan.h"
+
+int roborock_load_all(RoborockDevice **out, int *count)
+{
+    if (!out || !count)
+        return -1;
+    *out   = NULL;
+    *count = 0;
+
+    const char *home = getenv("HOME");
+    if (!home)
+        return -1;
+
+    char path[600];
+    snprintf(path, sizeof(path), ROBOROCK_STORE_FMT, home);
+
+    RAII_FILE FILE *f = fopen(path, "r");
+    if (!f)
+        return 0; /* not found — not an error */
+
+    char line[256];
+    while (fgets(line, sizeof(line), f))
+    {
+        if (line[0] == '#' || line[0] == '\n')
+            continue;
+
+        char ip_buf[16]     = {0};
+        char token_hex[33]  = {0};
+        char dev_id_hex[9]  = {0};
+
+        if (sscanf(line, "%15s %32s %8s", ip_buf, token_hex, dev_id_hex) != 3)
+            continue;
+
+        RoborockDevice dev = {0};
+        memcpy(dev.ip, ip_buf, sizeof(dev.ip) - 1);
+
+        if (strlen(token_hex) != 32)
+            continue;
+        if (hex_to_bytes(token_hex, dev.token, 16) != 0)
+        {
+            LOG_WARN_MSG("roborock_load_all: corrupt token for %s, skipping", ip_buf);
+            continue;
+        }
+
+        unsigned long id = strtoul(dev_id_hex, NULL, 16);
+        dev.device_id   = (unsigned int)id;
+        dev.token_valid = 1;
+
+        RoborockDevice *tmp = realloc(*out, (size_t)(*count + 1) * sizeof(**out));
+        if (!tmp)
+            break;
+        *out = tmp;
+        (*out)[(*count)++] = dev;
+    }
+
+    return 0;
+}
+
+/* ── roborock_is_known ────────────────────────────────────────────────────── */
+
+int roborock_is_known(const char *ip)
+{
+    if (!ip)
+        return -1;
+
+    RoborockDevice dev = {0};
+    int rc = roborock_load(ip, &dev);
+    return (rc == 0) ? 1 : (rc == 1) ? 0 : -1;
+}
+
+/* ── roborock_scan ────────────────────────────────────────────────────────── */
+
+typedef struct
+{
+    pthread_mutex_t mu;
+    RoborockDevice *devices;
+    int             count;
+    int             capacity;
+} RoborockScanCtx;
+
+static int roborock_probe_cb(const char *ip, void *ctx)
+{
+    RoborockScanCtx *c = ctx;
+    RoborockDevice dev = {0};
+    strncpy(dev.ip, ip, sizeof(dev.ip) - 1);
+    if (roborock_hello(&dev) != 0)
+        return 0;
+    pthread_mutex_lock(&c->mu);
+    if (c->count >= c->capacity)
+    {
+        int newcap = c->capacity ? c->capacity * 2 : 4;
+        RoborockDevice *tmp = realloc(c->devices,
+                                      (size_t)newcap * sizeof(*tmp));
+        if (tmp)
+        {
+            c->devices  = tmp;
+            c->capacity = newcap;
+        }
+    }
+    if (c->count < c->capacity)
+        c->devices[c->count++] = dev;
+    pthread_mutex_unlock(&c->mu);
+    return 1;
+}
+
+int roborock_scan(const char *cidr, RoborockDevice **out, int *out_count)
+{
+    if (!cidr || !out || !out_count)
+        return -1;
+
+    RoborockScanCtx ctx = {0};
+    pthread_mutex_init(&ctx.mu, NULL);
+    subnet_scan(cidr, roborock_probe_cb, &ctx);
+    pthread_mutex_destroy(&ctx.mu);
+    *out       = ctx.devices;
+    *out_count = ctx.count;
+    return 0;
+}
+
+void roborock_scan_free(RoborockDevice *list)
+{
+    free(list);
 }

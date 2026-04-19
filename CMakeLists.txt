@@ -40,11 +40,14 @@ add_subdirectory(libappliances)
 add_executable(home-appliances src/main.c)
 target_link_libraries(home-appliances PRIVATE appliances)
 
+add_executable(home-appliances-discovery src/main_discovery.c)
+target_link_libraries(home-appliances-discovery PRIVATE appliances)
+
 add_subdirectory(tests)
 
 include(GNUInstallDirs)
 
-install(TARGETS home-appliances
+install(TARGETS home-appliances home-appliances-discovery
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 

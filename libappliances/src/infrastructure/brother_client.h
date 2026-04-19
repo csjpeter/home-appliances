@@ -49,4 +49,51 @@ int brother_get_status(const char *ip, BrotherStatus *out);
  */
 int brother_get_consumables(const char *ip, BrotherConsumables *out);
 
+#define PRINTER_MODEL_LEN 64
+
+/** Known Brother printer entry. */
+typedef struct
+{
+    char ip[16];
+    char model[PRINTER_MODEL_LEN];
+} BrotherDevice;
+
+/** List of known Brother printers (from printer_devices store). */
+typedef struct
+{
+    BrotherDevice *devices;
+    int            count;
+} BrotherDeviceList;
+
+/**
+ * @brief Load known printers from ~/.config/home-appliances/printer_devices.
+ *        Missing file is not an error.
+ * @return 0 on success, -1 on I/O error.
+ */
+int brother_load(BrotherDeviceList *out);
+
+/**
+ * @brief Save printer list to ~/.config/home-appliances/printer_devices (mode 0600).
+ * @return 0 on success, -1 on error.
+ */
+int brother_save(const BrotherDeviceList *list);
+
+/** @brief Free a BrotherDeviceList. */
+void brother_device_list_free(BrotherDeviceList *list);
+
+/**
+ * @brief Check whether ip appears in the printer_devices store.
+ * @return 1 if found, 0 if not found, -1 on I/O error.
+ */
+int brother_is_known(const char *ip);
+
+/**
+ * @brief Scan a subnet for Brother printers via SNMP probe.
+ *        Results are NOT saved — caller must call brother_save().
+ * @param cidr CIDR subnet, e.g. "192.168.1.0/24".
+ * @param out  Output list; caller must free with brother_device_list_free().
+ * @return 0 on success (empty list OK), -1 on fatal error.
+ */
+int brother_scan(const char *cidr, BrotherDeviceList *out);
+
 #endif /* BROTHER_CLIENT_H */

@@ -12,6 +12,10 @@
 #include <string.h>
 #include <unistd.h>
 
+/* ── Forward declarations ────────────────────────────────────────────── */
+
+static void device_unreachable_hint(const char *ip, const char *device_type);
+
 /* ── Generic helpers ─────────────────────────────────────────────────── */
 
 static int broadcast_from_cfg(const Config *cfg, char *out, size_t out_len)
@@ -56,19 +60,39 @@ static GreeDevice *gree_find_device(GreeDeviceList *list, const char *ip)
 
 /* ── list command ────────────────────────────────────────────────────── */
 
-static int cmd_list(const Config *cfg)
+static int cmd_list(void)
+{
+    ApplianceList list = {0};
+    if (appliance_service_list_known(&list) != 0) {
+        fprintf(stderr, "Failed to read device store.\n");
+        return -1;
+    }
+    if (list.count == 0)
+        printf("No devices known. Run 'home-appliances discover' to scan the network.\n");
+    else
+        appliance_service_print(&list);
+    appliance_list_free(&list);
+    return 0;
+}
+
+static int cmd_discover(const Config *cfg)
 {
     char broadcast[32];
     if (broadcast_from_cfg(cfg, broadcast, sizeof(broadcast)) != 0)
         return -1;
 
+    printf("Scanning %s for all device types...\n", cfg->network);
     ApplianceList list = {0};
-    if (appliance_service_discover(broadcast, cfg->discovery_timeout_ms,
-                                   &list) != 0) {
+    if (appliance_service_discover_all(cfg->network, broadcast,
+                                       cfg->discovery_timeout_ms, &list) != 0)
+    {
         fprintf(stderr, "Discovery failed.\n");
         return -1;
     }
-    appliance_service_print(&list);
+    if (list.count == 0)
+        printf("No devices found. Devices already known are shown by: home-appliances list\n");
+    else
+        appliance_service_print(&list);
     appliance_list_free(&list);
     return 0;
 }
@@ -446,7 +470,7 @@ static int get_vacuum(const char *ip, RoborockDevice *dev)
     if (rc != 0) {
         /* not found or error — do hello */
         if (roborock_hello(dev) != 0) {
-            fprintf(stderr, "Cannot connect to vacuum at %s\n", ip);
+            device_unreachable_hint(ip, "vacuum");
             return -1;
         }
         roborock_save(dev);
@@ -574,7 +598,7 @@ static int cmd_tv_probe(const char *ip)
 {
     int r = samsung_tv_probe(ip);
     if (r > 0)       printf("%s: online\n",  ip);
-    else if (r == 0) printf("%s: offline\n", ip);
+    else if (r == 0) { device_unreachable_hint(ip, "tv"); }
     else             fprintf(stderr, "%s: probe error\n", ip);
     return (r >= 0) ? 0 : -1;
 }
@@ -584,7 +608,7 @@ static int cmd_tv_key(const char *ip, const char *key)
     if (!is_known_key(key))
         fprintf(stderr, "Warning: '%s' not in known key list\n", key);
     if (samsung_tv_send_key(ip, key) != 0) {
-        fprintf(stderr, "%s: failed to send %s\n", ip, key);
+        device_unreachable_hint(ip, "tv");
         return -1;
     }
     printf("%s: sent %s\n", ip, key);
@@ -608,7 +632,7 @@ static int cmd_printer_probe(const char *ip)
     char model[64] = {0};
     int r = brother_probe(ip, model, sizeof(model));
     if (r > 0)       printf("%s: online — %s\n", ip, model[0] ? model : "Brother printer");
-    else if (r == 0) printf("%s: offline (unreachable)\n", ip);
+    else if (r == 0) { device_unreachable_hint(ip, "printer"); }
     else             fprintf(stderr, "%s: probe error\n", ip);
     return (r >= 0) ? 0 : -1;
 }
@@ -686,6 +710,96 @@ static int cmd_printer_consumables(const char *ip)
     return 0;
 }
 
+/* ── Per-type list commands ──────────────────────────────────────────── */
+
+static int cmd_vacuum_list(void)
+{
+    RoborockDevice *devs = NULL;
+    int count = 0;
+    if (roborock_load_all(&devs, &count) != 0) {
+        fprintf(stderr, "Failed to read vacuum device store.\n");
+        return -1;
+    }
+    if (count == 0)
+        printf("No Roborock devices known. Run: home-appliances discover\n");
+    else {
+        printf("%-20s %s\n", "IP", "Device ID");
+        printf("%-20s %s\n", "--------------------", "----------");
+        for (int i = 0; i < count; i++)
+            printf("%-20s %08x\n", devs[i].ip, devs[i].device_id);
+    }
+    free(devs);
+    return 0;
+}
+
+static int cmd_tv_list(void)
+{
+    SamsungTvDeviceList list = {0};
+    if (samsung_tv_load(&list) != 0) {
+        fprintf(stderr, "Failed to read TV device store.\n");
+        return -1;
+    }
+    if (list.count == 0)
+        printf("No Samsung TVs known. Run: home-appliances discover\n");
+    else {
+        printf("%-20s %s\n", "IP", "Model");
+        printf("%-20s %s\n", "--------------------", "-----");
+        for (int i = 0; i < list.count; i++)
+            printf("%-20s %s\n", list.devices[i].ip, list.devices[i].model);
+    }
+    samsung_tv_device_list_free(&list);
+    return 0;
+}
+
+static int cmd_printer_list(void)
+{
+    BrotherDeviceList list = {0};
+    if (brother_load(&list) != 0) {
+        fprintf(stderr, "Failed to read printer device store.\n");
+        return -1;
+    }
+    if (list.count == 0)
+        printf("No Brother printers known. Run: home-appliances discover\n");
+    else {
+        printf("%-20s %s\n", "IP", "Model");
+        printf("%-20s %s\n", "--------------------", "-----");
+        for (int i = 0; i < list.count; i++)
+            printf("%-20s %s\n", list.devices[i].ip, list.devices[i].model);
+    }
+    brother_device_list_free(&list);
+    return 0;
+}
+
+/* ── Unreachable device hint ─────────────────────────────────────────── */
+
+static void device_unreachable_hint(const char *ip, const char *device_type)
+{
+    int known = 0;
+    if (strcmp(device_type, "vacuum") == 0)
+        known = (roborock_is_known(ip) == 1);
+    else if (strcmp(device_type, "tv") == 0)
+        known = (samsung_tv_is_known(ip) == 1);
+    else if (strcmp(device_type, "printer") == 0)
+        known = (brother_is_known(ip) == 1);
+    else if (strcmp(device_type, "ac") == 0) {
+        GreeDeviceList saved = {0};
+        gree_client_load_bound(&saved);
+        for (int i = 0; i < saved.count; i++)
+            if (strcmp(saved.devices[i].ip, ip) == 0) { known = 1; break; }
+        gree_device_list_free(&saved);
+    }
+    if (known)
+        fprintf(stderr,
+            "Device at %s is not reachable — it may be powered off or its IP\n"
+            "has changed. Run 'home-appliances discover' to update the device list.\n",
+            ip);
+    else
+        fprintf(stderr,
+            "%s device at %s is not reachable.\n"
+            "Run 'home-appliances discover' to scan the network.\n",
+            device_type, ip);
+}
+
 /* ── Usage ───────────────────────────────────────────────────────────── */
 
 static void print_usage(const char *prog)
@@ -699,12 +813,12 @@ static void print_usage(const char *prog)
         "  --help           Show this help and exit\n"
         "\n"
         "General:\n"
-        "  list                      Scan for Gree AC units on the local network\n"
+        "  list                      Show all known devices from device stores\n"
+        "  discover                  Scan network for all device types, update device list\n"
         "  version\n"
         "  help\n"
         "\n"
-        "  Note: vacuum, tv and printer have no network discovery — supply the IP\n"
-        "  directly (find it in your router's DHCP table or use 'nmap -sn <net>').\n"
+        "  Note: vacuum, tv and printer can also be managed by IP directly.\n"
         "\n"
         "AC (Gree) — ac <sub> <ip> [params]:\n"
         "  ac list                   Broadcast-scan for Gree AC units (auto-discover)\n"
@@ -721,14 +835,16 @@ static void print_usage(const char *prog)
         "    xfan=on|off  health=on|off  air=on|off\n"
         "    antifrost=on|off  lights=on|off  unit=c|f\n"
         "\n"
-        "Vacuum (Roborock) — vacuum <sub> <ip>  [IP required, no auto-discover]:\n"
+        "Vacuum (Roborock) — vacuum <sub> [<ip>]:\n"
+        "  vacuum list               List known Roborock devices\n"
         "  vacuum status <ip>        Show status\n"
         "  vacuum consumables <ip>   Show consumable life\n"
         "  vacuum start|stop|pause|dock|spot|find <ip>\n"
         "  vacuum fan <ip> silent|balanced|turbo|max|gentle\n"
         "  vacuum reset-brush|reset-side-brush|reset-filter|reset-sensor <ip>\n"
         "\n"
-        "TV (Samsung) — tv <sub> <ip>  [IP required, no auto-discover]:\n"
+        "TV (Samsung) — tv <sub> [<ip>]:\n"
+        "  tv list                   List known Samsung TVs\n"
         "  tv probe <ip>             Check if TV is on\n"
         "  tv key <ip> KEY1 [KEY2..] Send one or more key codes (300ms gap)\n"
         "  tv volup|voldown <ip> [N] Send N times (default 1, 200ms gap)\n"
@@ -736,7 +852,8 @@ static void print_usage(const char *prog)
         "  tv source|hdmi <ip>\n"
         "  tv channel <ip> up|down\n"
         "\n"
-        "Printer (Brother) — printer <sub> <ip>  [IP required, no auto-discover]:\n"
+        "Printer (Brother) — printer <sub> [<ip>]:\n"
+        "  printer list                  List known Brother printers\n"
         "  printer probe <ip>            Check reachability\n"
         "  printer status <ip> [--quiet] State, toner, page count\n"
         "  printer toner <ip> [--raw]    Toner level (--raw = integer only)\n"
@@ -790,7 +907,11 @@ int main(int argc, char *argv[])
 
     /* ── list ── */
     if (strcmp(argv[1], "list") == 0) {
-        ret = cmd_list(&cfg);
+        ret = cmd_list();
+
+    /* ── discover ── */
+    } else if (strcmp(argv[1], "discover") == 0) {
+        ret = cmd_discover(&cfg);
 
     /* ── ac ── */
     } else if (strcmp(argv[1], "ac") == 0) {
@@ -896,8 +1017,15 @@ int main(int argc, char *argv[])
 
     /* ── vacuum ── */
     } else if (strcmp(argv[1], "vacuum") == 0) {
-        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
+        if (argc < 3) { print_usage(argv[0]); ret = 1; goto done; }
         const char *sub = argv[2];
+
+        if (strcmp(sub, "list") == 0) {
+            ret = cmd_vacuum_list();
+            goto done;
+        }
+
+        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
         const char *ip  = argv[3];
 
         RoborockDevice dev = {0};
@@ -983,8 +1111,15 @@ int main(int argc, char *argv[])
 
     /* ── tv ── */
     } else if (strcmp(argv[1], "tv") == 0) {
-        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
+        if (argc < 3) { print_usage(argv[0]); ret = 1; goto done; }
         const char *sub = argv[2];
+
+        if (strcmp(sub, "list") == 0) {
+            ret = cmd_tv_list();
+            goto done;
+        }
+
+        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
         const char *ip  = argv[3];
 
         if (strcmp(sub, "probe") == 0) {
@@ -1049,8 +1184,15 @@ int main(int argc, char *argv[])
 
     /* ── printer ── */
     } else if (strcmp(argv[1], "printer") == 0) {
-        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
+        if (argc < 3) { print_usage(argv[0]); ret = 1; goto done; }
         const char *sub = argv[2];
+
+        if (strcmp(sub, "list") == 0) {
+            ret = cmd_printer_list();
+            goto done;
+        }
+
+        if (argc < 4) { print_usage(argv[0]); ret = 1; goto done; }
         const char *ip  = argv[3];
 
         if (strcmp(sub, "probe") == 0) {

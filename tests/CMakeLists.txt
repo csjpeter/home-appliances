@@ -8,6 +8,7 @@ add_executable(test-runner
     ${CMAKE_SOURCE_DIR}/libappliances/src/core/base64.c
     ${CMAKE_SOURCE_DIR}/libappliances/src/core/config.c
     ${CMAKE_SOURCE_DIR}/libappliances/src/core/logger.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/core/subnet_scan.c
 )
 
 target_include_directories(test-runner PRIVATE
@@ -15,7 +16,7 @@ target_include_directories(test-runner PRIVATE
     ${CMAKE_SOURCE_DIR}/tests/common
 )
 
-target_link_libraries(test-runner PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(test-runner PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
 add_test(NAME unit-tests COMMAND test-runner)
 
@@ -25,6 +26,7 @@ add_executable(test-roborock-functional
     functional/test_roborock_functional.c
     ${CMAKE_SOURCE_DIR}/libappliances/src/infrastructure/roborock_client.c
     ${CMAKE_SOURCE_DIR}/libappliances/src/core/logger.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/core/subnet_scan.c
 )
 
 target_include_directories(test-roborock-functional PRIVATE
@@ -47,6 +49,7 @@ add_executable(test-brother-functional
     functional/test_brother_functional.c
     ${CMAKE_SOURCE_DIR}/libappliances/src/infrastructure/brother_client.c
     ${CMAKE_SOURCE_DIR}/libappliances/src/core/logger.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/core/subnet_scan.c
 )
 
 target_include_directories(test-brother-functional PRIVATE
@@ -90,6 +93,7 @@ add_executable(test-samsung-tv-functional
     ${CMAKE_SOURCE_DIR}/libappliances/src/infrastructure/samsung_tv_client.c
     ${CMAKE_SOURCE_DIR}/libappliances/src/core/base64.c
     ${CMAKE_SOURCE_DIR}/libappliances/src/core/logger.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/core/subnet_scan.c
 )
 
 target_include_directories(test-samsung-tv-functional PRIVATE
