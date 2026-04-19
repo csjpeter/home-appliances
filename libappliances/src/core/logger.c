@@ -28,7 +28,7 @@ int logger_init(const char *log_file_path, LogLevel level)
         return 0;
     g_log_file = fopen(log_file_path, "a");
     if (!g_log_file) {
-        fprintf(stderr, "logger: nem nyitható meg: %s\n", log_file_path);
+        fprintf(stderr, "logger: cannot open: %s\n", log_file_path);
         return -1;
     }
     return 0;

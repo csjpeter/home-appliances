@@ -1,24 +1,24 @@
 # home-appliances
 
-Otthoni készülékek helyi hálózati vezérlése parancssori eszközzel, C11-ben írva.
+Command-line tool for local network control of home appliances, written in C11.
 
-## Támogatott készülékek
+## Supported devices
 
-| Készülék | Protokoll | Állapot |
-|----------|-----------|---------|
-| Gree klíma (LAN v2) | UDP/7000, AES-128-ECB | scan kész, vezérlés folyamatban |
-| robot vacuum | — | tervezett |
-| smart TV | — | tervezett |
-| nyomtató | — | tervezett |
+| Device | Protocol | Status |
+|--------|----------|--------|
+| Gree AC (LAN v2) | UDP/7000, AES-128-ECB | scan done, control in progress |
+| robot vacuum | — | planned |
+| smart TV | — | planned |
+| nyomtató printer | — | planned |
 
-## Követelmények
+## Requirements
 
-- Linux, GCC ≥ 9 vagy Clang ≥ 11
+- Linux, GCC ≥ 9 or Clang ≥ 11
 - CMake ≥ 3.10
-- Valgrind, lcov (csak fejlesztéshez)
+- Valgrind, lcov (development only)
 
 ```bash
-./manage.sh deps   # Ubuntu 24.04 / Rocky 9 esetén
+./manage.sh deps   # Ubuntu 24.04 / Rocky 9
 ```
 
 ## Build
@@ -26,23 +26,23 @@ Otthoni készülékek helyi hálózati vezérlése parancssori eszközzel, C11-b
 ```bash
 ./manage.sh build      # Release → bin/home-appliances
 ./manage.sh debug      # Debug + AddressSanitizer
-./manage.sh test       # Unit tesztek ASAN-nal
-./manage.sh valgrind   # Valgrind leak ellenőrzés
-./manage.sh coverage   # GCOV/LCOV lefedettség
-./manage.sh clean      # Build artefaktek törlése
+./manage.sh test       # Unit tests with ASAN
+./manage.sh valgrind   # Valgrind leak check
+./manage.sh coverage   # GCOV/LCOV coverage report
+./manage.sh clean      # Remove build artifacts
 ```
 
-## Használat
+## Usage
 
 ```bash
-home-appliances list           # Hálózati scan, készülékek listázása
-home-appliances version        # Verziószám
-home-appliances help           # Súgó
+home-appliances list           # Scan network and list appliances
+home-appliances version        # Print version
+home-appliances help           # Show help
 ```
 
-## Architektúra
+## Architecture
 
-Tiszta rétegelt modell, nulla körköros függőséggel:
+Clean layered model with zero circular dependencies:
 
 ```
 Application    src/main.c
@@ -52,9 +52,9 @@ Core           libappliances/src/core/
 Platform       libappliances/src/platform/posix/
 ```
 
-## Konfiguráció
+## Configuration
 
-Az első indításkor alapértékek érvényesek. Manuális szerkesztés:
+Defaults apply on first run. Edit manually if needed:
 
 ```ini
 # ~/.config/home-appliances/config.ini
@@ -63,6 +63,6 @@ iface=wlan0
 discovery_timeout_ms=5000
 ```
 
-## Licenc
+## License
 
 MIT

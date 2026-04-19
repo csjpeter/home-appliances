@@ -5,16 +5,16 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 BIN_DIR="$ROOT/bin"
 
 usage() {
-    echo "Használat: $0 <parancs>"
+    echo "Usage: $0 <command>"
     echo ""
-    echo "Parancsok:"
+    echo "Commands:"
     echo "  build      Release build → bin/home-appliances"
-    echo "  debug      Debug build ASAN-nal"
-    echo "  test       Unit tesztek ASAN-nal"
-    echo "  valgrind   Valgrind leak ellenőrzés"
-    echo "  coverage   GCOV/LCOV lefedettség"
-    echo "  clean      Build artefaktek törlése"
-    echo "  deps       Rendszerfüggőségek telepítése"
+    echo "  debug      Debug build with ASAN"
+    echo "  test       Unit tests with ASAN"
+    echo "  valgrind   Valgrind leak check"
+    echo "  coverage   GCOV/LCOV coverage report"
+    echo "  clean      Remove build artifacts"
+    echo "  deps       Install system dependencies"
 }
 
 build_type() {
@@ -28,11 +28,11 @@ cmd="${1:-}"
 case "$cmd" in
     build)
         build_type Release
-        echo "Build kész: $BIN_DIR/home-appliances"
+        echo "Build done: $BIN_DIR/home-appliances"
         ;;
     debug)
         build_type Debug
-        echo "Debug build kész: $BIN_DIR/home-appliances"
+        echo "Debug build done: $BIN_DIR/home-appliances"
         ;;
     test)
         build_type Debug
@@ -50,11 +50,11 @@ case "$cmd" in
         lcov --capture --directory . --output-file coverage.info
         lcov --remove coverage.info '/usr/*' '*/tests/*' --output-file coverage.info
         genhtml coverage.info --output-directory coverage-report
-        echo "Lefedettség: $ROOT/build-Coverage/coverage-report/index.html"
+        echo "Coverage report: $ROOT/build-Coverage/coverage-report/index.html"
         ;;
     clean)
         rm -rf "$ROOT"/build-* "$BIN_DIR"
-        echo "Tisztítás kész."
+        echo "Clean done."
         ;;
     deps)
         sudo apt-get update

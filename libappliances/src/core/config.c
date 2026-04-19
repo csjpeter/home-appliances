@@ -19,7 +19,7 @@ static int config_path(char *buf, size_t len)
 {
     const char *home = getenv("HOME");
     if (!home) {
-        LOG_ERROR_MSG("HOME környezeti változó nincs beállítva");
+        LOG_ERROR_MSG("HOME environment variable not set");
         return -1;
     }
     snprintf(buf, len, CONFIG_PATH_FMT, home);
@@ -36,7 +36,7 @@ int config_load(Config *cfg)
 
     FILE *f = fopen(path, "r");
     if (!f)
-        return 0; /* első futás: alapértékek érvényesek */
+        return 0; /* first run: defaults apply */
 
     char line[256];
     while (fgets(line, sizeof(line), f)) {
@@ -66,7 +66,7 @@ int config_save(const Config *cfg)
     snprintf(path, sizeof(path), "%s/config.ini", dir);
     FILE *f = fopen(path, "w");
     if (!f) {
-        LOG_ERROR_MSG("Nem írható konfig: %s", path);
+        LOG_ERROR_MSG("Cannot write config: %s", path);
         return -1;
     }
     fprintf(f, "network=%s\n", cfg->network);

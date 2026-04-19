@@ -10,11 +10,11 @@ void run_config_tests(void);
 
 int main(void)
 {
-    printf("=== home-appliances unit tesztek ===\n");
+    printf("=== home-appliances unit tests ===\n");
 
     run_config_tests();
 
-    printf("\nEredmény: %d/%d teszt sikeres\n",
+    printf("\nResult: %d/%d tests passed\n",
            g_tests_run - g_tests_failed, g_tests_run);
 
     return g_tests_failed > 0 ? EXIT_FAILURE : EXIT_SUCCESS;

@@ -10,9 +10,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-/* Gree protokoll implementáció helye.
- * A binding, állapotlekérdezés és vezérlés AES-128-ECB titkosítást igényel.
- * Jelenlegi állapot: stub — tényleges AES implementáció szükséges. */
+/* Gree LAN v2 protocol implementation.
+ * Binding, status query and control require AES-128-ECB encryption.
+ * Current state: stub — AES implementation pending. */
 
 static int udp_socket_create(int timeout_ms)
 {
@@ -71,12 +71,12 @@ int gree_client_scan(const char *broadcast, int timeout_ms, GreeDeviceList *out)
         ssize_t n = recvfrom(fd, buf, sizeof(buf) - 1, 0,
                              (struct sockaddr *)&sender, &sender_len);
         if (n < 0)
-            break; /* timeout vagy hiba */
+            break; /* timeout or error */
 
         buf[n] = '\0';
 
-        /* TODO: JSON parse + AES-128-ECB dekódolás a pack mezőre */
-        LOG_DEBUG_MSG("Gree válasz: %s", buf);
+        /* TODO: JSON parse + AES-128-ECB decrypt pack field */
+        LOG_DEBUG_MSG("Gree response: %s", buf);
 
         if (out->count >= capacity) {
             capacity *= 2;
@@ -92,14 +92,14 @@ int gree_client_scan(const char *broadcast, int timeout_ms, GreeDeviceList *out)
     }
 
     close(fd);
-    LOG_INFO_MSG("Gree scan kész: %d eszköz találva", out->count);
+    LOG_INFO_MSG("Gree scan done: %d device(s) found", out->count);
     return 0;
 }
 
 int gree_client_bind(GreeDevice *dev)
 {
-    /* TODO: binding handshake implementálása */
-    LOG_WARN_MSG("gree_client_bind: nem implementált (%s)", dev->ip);
+    /* TODO: implement binding handshake */
+    LOG_WARN_MSG("gree_client_bind: not implemented (%s)", dev->ip);
     return -1;
 }
 
@@ -108,8 +108,8 @@ int gree_client_get_status(const GreeDevice *dev, const char **keys,
 {
     (void)keys;
     (void)count;
-    /* TODO: állapotlekérdezés implementálása */
-    LOG_WARN_MSG("gree_client_get_status: nem implementált (%s)", dev->ip);
+    /* TODO: implement status query */
+    LOG_WARN_MSG("gree_client_get_status: not implemented (%s)", dev->ip);
     *values = NULL;
     return -1;
 }
@@ -120,8 +120,8 @@ int gree_client_set(const GreeDevice *dev, const char **keys,
     (void)keys;
     (void)values;
     (void)count;
-    /* TODO: vezérlés implementálása */
-    LOG_WARN_MSG("gree_client_set: nem implementált (%s)", dev->ip);
+    /* TODO: implement control */
+    LOG_WARN_MSG("gree_client_set: not implemented (%s)", dev->ip);
     return -1;
 }
 

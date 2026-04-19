@@ -8,22 +8,22 @@
 static void print_usage(const char *prog)
 {
     fprintf(stderr,
-        "Használat: %s <parancs> [opciók]\n"
+        "Usage: %s <command> [options]\n"
         "\n"
-        "Parancsok:\n"
-        "  list       Hálózati scan és készülékek listázása\n"
-        "  version    Verzió kiírása\n"
-        "  help       Súgó megjelenítése\n",
+        "Commands:\n"
+        "  list       Scan network and list appliances\n"
+        "  version    Print version\n"
+        "  help       Show this help\n",
         prog);
 }
 
 static int cmd_list(const Config *cfg)
 {
     char broadcast[32];
-    /* Egyszerű broadcast: hálózat utolsó oktetét .255-re cseréljük */
+    /* Derive broadcast address by replacing last octet with 255 */
     const char *slash = strchr(cfg->network, '/');
     if (!slash) {
-        fprintf(stderr, "Érvénytelen hálózati cím: %s\n", cfg->network);
+        fprintf(stderr, "Invalid network address: %s\n", cfg->network);
         return -1;
     }
     int a, b, c;
@@ -32,7 +32,7 @@ static int cmd_list(const Config *cfg)
 
     ApplianceList list = {0};
     if (appliance_service_discover(broadcast, cfg->discovery_timeout_ms, &list) != 0) {
-        fprintf(stderr, "Hiba a felfedezés során.\n");
+        fprintf(stderr, "Discovery failed.\n");
         return -1;
     }
 
@@ -57,7 +57,7 @@ int main(int argc, char *argv[])
 
     Config cfg = {0};
     if (config_load(&cfg) != 0) {
-        fprintf(stderr, "Konfiguráció betöltési hiba.\n");
+        fprintf(stderr, "Failed to load configuration.\n");
         return 1;
     }
 
@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
     if (strcmp(argv[1], "list") == 0) {
         ret = cmd_list(&cfg);
     } else {
-        fprintf(stderr, "Ismeretlen parancs: %s\n", argv[1]);
+        fprintf(stderr, "Unknown command: %s\n", argv[1]);
         print_usage(argv[0]);
         ret = 1;
     }
