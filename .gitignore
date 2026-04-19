@@ -6,3 +6,4 @@ bin/
 *.gcno
 .env
 .claude/
+local-special-data/
