@@ -32,6 +32,10 @@
 int g_tests_run    = 0;
 int g_tests_failed = 0;
 
+/* ── Status override for specialized mock responses ─────────────────────── */
+
+static char g_status_override[512];
+
 /* ── Fake credentials ────────────────────────────────────────────────────── */
 
 /* 16 token bytes: 0x01 0x02 ... 0x10 */
@@ -188,11 +192,19 @@ static void choose_response(const char *req_json, int req_id,
 {
     if (strstr(req_json, "\"get_status\""))
     {
-        snprintf(resp_json, resp_size,
-                 "{\"id\":%d,\"result\":[{\"battery\":85,\"state\":8,"
-                 "\"error_code\":0,\"clean_time\":1920,\"clean_area\":2460000,"
-                 "\"fan_power\":102,\"in_cleaning\":0}]}",
-                 req_id);
+        if (g_status_override[0] != '\0')
+        {
+            snprintf(resp_json, resp_size,
+                     "{\"id\":%d,\"result\":[%s]}", req_id, g_status_override);
+        }
+        else
+        {
+            snprintf(resp_json, resp_size,
+                     "{\"id\":%d,\"result\":[{\"battery\":85,\"state\":8,"
+                     "\"error_code\":0,\"clean_time\":1920,\"clean_area\":2460000,"
+                     "\"fan_power\":102,\"in_cleaning\":0}]}",
+                     req_id);
+        }
     }
     else if (strstr(req_json, "\"get_consumable\""))
     {
@@ -299,7 +311,7 @@ static void *mock_server_thread(void *varg)
         if (p)
             req_id = (int)strtol(p + 5, NULL, 10);
 
-        char resp_json[512];
+        char resp_json[1024];
         choose_response((char *)plain, req_id, resp_json, sizeof(resp_json));
 
         unsigned char resp_pkt[2048];
@@ -457,6 +469,108 @@ static void test_reset_consumable(void)
     ASSERT(rc == 0, "roborock_reset_consumable returned 0");
 }
 
+static void test_low_battery(void)
+{
+    snprintf(g_status_override, sizeof(g_status_override),
+             "{\"battery\":15,\"state\":5,\"error_code\":0,"
+             "\"clean_time\":0,\"clean_area\":0,\"fan_power\":101,\"in_cleaning\":1}");
+
+    start_mock(0);
+
+    RoborockDevice dev = make_device();
+    int rc = roborock_hello(&dev);
+    RoborockStatus st = {0};
+    if (rc == 0)
+        rc = roborock_get_status(&dev, &st);
+
+    stop_mock();
+    g_status_override[0] = '\0'; /* reset override */
+
+    ASSERT(rc == 0,          "low_battery: get_status returned 0");
+    ASSERT(st.battery == 15, "low_battery: battery = 15");
+    ASSERT(st.in_cleaning == 1, "low_battery: in_cleaning = 1");
+}
+
+static void test_stop(void)
+{
+    start_mock(0);
+
+    RoborockDevice dev = make_device();
+    int rc = roborock_hello(&dev);
+    if (rc == 0)
+        rc = roborock_stop(&dev);
+
+    stop_mock();
+
+    ASSERT(rc == 0, "roborock_stop returned 0");
+}
+
+static void test_pause(void)
+{
+    start_mock(0);
+
+    RoborockDevice dev = make_device();
+    int rc = roborock_hello(&dev);
+    if (rc == 0)
+        rc = roborock_pause(&dev);
+
+    stop_mock();
+
+    ASSERT(rc == 0, "roborock_pause returned 0");
+}
+
+static void test_dock(void)
+{
+    start_mock(0);
+
+    RoborockDevice dev = make_device();
+    int rc = roborock_hello(&dev);
+    if (rc == 0)
+        rc = roborock_dock(&dev);
+
+    stop_mock();
+
+    ASSERT(rc == 0, "roborock_dock returned 0");
+}
+
+static void test_spot(void)
+{
+    start_mock(0);
+
+    RoborockDevice dev = make_device();
+    int rc = roborock_hello(&dev);
+    if (rc == 0)
+        rc = roborock_spot(&dev);
+
+    stop_mock();
+
+    ASSERT(rc == 0, "roborock_spot returned 0");
+}
+
+static void test_set_fan_invalid(void)
+{
+    RoborockDevice dev = make_device();
+    /* level 100 is below the valid range 101-105 */
+    int rc = roborock_set_fan(&dev, 100);
+    ASSERT(rc == -1, "roborock_set_fan(100) returned -1 (invalid level)");
+}
+
+static void test_set_fan_invalid_high(void)
+{
+    RoborockDevice dev = make_device();
+    /* level 106 is above the valid range 101-105 */
+    int rc = roborock_set_fan(&dev, 106);
+    ASSERT(rc == -1, "roborock_set_fan(106) returned -1 (invalid level)");
+}
+
+static void test_reset_consumable_empty(void)
+{
+    RoborockDevice dev = make_device();
+    /* empty string is an invalid consumable name */
+    int rc = roborock_reset_consumable(&dev, "");
+    ASSERT(rc == -1, "roborock_reset_consumable(\"\") returned -1 (empty item)");
+}
+
 /* ── Main ────────────────────────────────────────────────────────────────── */
 
 int main(void)
@@ -470,6 +584,14 @@ int main(void)
     RUN_TEST(test_find);
     RUN_TEST(test_set_fan);
     RUN_TEST(test_reset_consumable);
+    RUN_TEST(test_low_battery);
+    RUN_TEST(test_stop);
+    RUN_TEST(test_pause);
+    RUN_TEST(test_dock);
+    RUN_TEST(test_spot);
+    RUN_TEST(test_set_fan_invalid);
+    RUN_TEST(test_set_fan_invalid_high);
+    RUN_TEST(test_reset_consumable_empty);
 
     printf("\nResult: %d/%d tests passed\n",
            g_tests_run - g_tests_failed, g_tests_run);

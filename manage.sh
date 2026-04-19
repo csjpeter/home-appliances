@@ -15,6 +15,8 @@ usage() {
     echo "  coverage   GCOV/LCOV coverage report"
     echo "  clean      Remove build artifacts"
     echo "  deps       Install system dependencies"
+    echo "  install    Install to PREFIX (default: ~/.local)"
+    echo "  uninstall  Remove installed files (reads build-Release/install_manifest.txt)"
 }
 
 build_type() {
@@ -59,6 +61,38 @@ case "$cmd" in
     deps)
         sudo apt-get update
         sudo apt-get install -y cmake gcc valgrind lcov libssl-dev
+        ;;
+    install)
+        build_type Release
+        PREFIX="${PREFIX:-$HOME/.local}"
+        cmake --install "$ROOT/build-Release" --prefix "$PREFIX"
+        # Refresh the user man-page database so 'man home-appliances' works immediately.
+        if command -v mandb &>/dev/null; then
+            mandb --user-db --quiet 2>/dev/null || true
+        fi
+        echo "Installed to $PREFIX"
+        echo "  binary : $PREFIX/bin/home-appliances"
+        echo "  man    : $PREFIX/share/man/man1/home-appliances.1"
+        echo "  desktop: $PREFIX/share/applications/home-appliances.desktop"
+        echo ""
+        echo "If 'man home-appliances' does not work yet, add to ~/.bashrc:"
+        echo "  export MANPATH=\"\$HOME/.local/share/man:\$MANPATH\""
+        ;;
+    uninstall)
+        manifest="$ROOT/build-Release/install_manifest.txt"
+        if [ ! -f "$manifest" ]; then
+            echo "No install manifest found. Run './manage.sh install' first." >&2
+            exit 1
+        fi
+        while IFS= read -r file; do
+            if [ -f "$file" ]; then
+                rm -v "$file"
+            fi
+        done < "$manifest"
+        if command -v mandb &>/dev/null; then
+            mandb --user-db --quiet 2>/dev/null || true
+        fi
+        echo "Uninstall complete."
         ;;
     *)
         usage

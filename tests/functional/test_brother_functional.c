@@ -358,6 +358,41 @@ static int rb_build_response(unsigned char *out, size_t out_size,
 }
 
 /*
+ * Build a one-varbind GetResponse (OID + raw OctetString bytes).
+ * Unlike rb_add_varbind_str, this takes explicit byte length for binary data.
+ */
+static int rb_add_varbind_raw(unsigned char *buf, size_t *pos, size_t cap,
+                               const char *oid_str,
+                               const unsigned char *data, size_t data_len)
+{
+    unsigned char oid_bytes[64];
+    int oid_len = rb_enc_oid(oid_str, oid_bytes, sizeof(oid_bytes));
+    if (oid_len < 0)
+        return -1;
+
+    unsigned char lb[4];
+    int oid_lb  = rb_enc_len(lb, oid_len);
+    int data_lb = rb_enc_len(lb, (int)data_len);
+    int body_len = 1 + oid_lb + oid_len + 1 + data_lb + (int)data_len;
+    int vb_lb    = rb_enc_len(lb, body_len);
+
+    if (rb_put1(buf, pos, cap, 0x30u) < 0) return -1;
+    { unsigned char lt[4]; rb_enc_len(lt, body_len);
+      if (rb_put(buf, pos, cap, lt, (size_t)vb_lb) < 0) return -1; }
+    /* OID TLV */
+    if (rb_put1(buf, pos, cap, 0x06u) < 0) return -1;
+    { unsigned char lt[4]; int lb2 = rb_enc_len(lt, oid_len);
+      if (rb_put(buf, pos, cap, lt, (size_t)lb2) < 0) return -1; }
+    if (rb_put(buf, pos, cap, oid_bytes, (size_t)oid_len) < 0) return -1;
+    /* OCTET STRING TLV */
+    if (rb_put1(buf, pos, cap, 0x04u) < 0) return -1;
+    { unsigned char lt[4]; int lb2 = rb_enc_len(lt, (int)data_len);
+      if (rb_put(buf, pos, cap, lt, (size_t)lb2) < 0) return -1; }
+    if (rb_put(buf, pos, cap, data, data_len) < 0) return -1;
+    return 0;
+}
+
+/*
  * Build a probe GetResponse: single OctetString varbind for sysDescr.
  */
 static int build_snmp_probe_response(unsigned char *out, size_t out_size,
@@ -404,6 +439,52 @@ static int build_snmp_status_response(unsigned char *out, size_t out_size,
         return -1;
     if (rb_add_varbind_int(varbinds, &vb_pos, sizeof(varbinds),
                             "1.3.6.1.4.1.2435.2.3.9.1.1.2.10.1", toner_low) < 0)
+        return -1;
+
+    return rb_build_response(out, out_size, varbinds, vb_pos);
+}
+
+/*
+ * Build a consumables GetResponse: 4 varbinds matching brother_get_consumables().
+ * OID order:
+ *   [0] OID_TONER_CUR  — INTEGER
+ *   [1] OID_TONER_MAX  — INTEGER
+ *   [2] OID_DRUM_INFO  — OCTET STRING (2-byte LE uint16, units 0.01%)
+ *   [3] OID_MAINT_NEXT — OCTET STRING (2-byte LE uint16, pages)
+ */
+static int build_snmp_consumables_response(unsigned char *out, size_t out_size,
+                                            int toner_cur, int toner_max,
+                                            unsigned int drum_raw,
+                                            unsigned int maint_raw)
+{
+    unsigned char varbinds[512];
+    size_t        vb_pos = 0;
+
+    if (rb_add_varbind_int(varbinds, &vb_pos, sizeof(varbinds),
+                            "1.3.6.1.2.1.43.11.1.1.9.1.1", toner_cur) < 0)
+        return -1;
+    if (rb_add_varbind_int(varbinds, &vb_pos, sizeof(varbinds),
+                            "1.3.6.1.2.1.43.11.1.1.8.1.1", toner_max) < 0)
+        return -1;
+
+    /* drum: 2-byte LE uint16 */
+    unsigned char drum_bytes[2] = {
+        (unsigned char)(drum_raw & 0xffu),
+        (unsigned char)((drum_raw >> 8) & 0xffu)
+    };
+    if (rb_add_varbind_raw(varbinds, &vb_pos, sizeof(varbinds),
+                            "1.3.6.1.4.1.2435.2.3.9.4.2.1.5.5.8.0",
+                            drum_bytes, 2) < 0)
+        return -1;
+
+    /* maintenance pages: 2-byte LE uint16 */
+    unsigned char maint_bytes[2] = {
+        (unsigned char)(maint_raw & 0xffu),
+        (unsigned char)((maint_raw >> 8) & 0xffu)
+    };
+    if (rb_add_varbind_raw(varbinds, &vb_pos, sizeof(varbinds),
+                            "1.3.6.1.4.1.2435.2.3.9.4.2.1.5.5.11.0",
+                            maint_bytes, 2) < 0)
         return -1;
 
     return rb_build_response(out, out_size, varbinds, vb_pos);
@@ -544,6 +625,117 @@ static void test_toner_low_flag(void)
     ASSERT(st.toner_low == 1, "toner low flag should be 1 (low)");
 }
 
+static void test_get_consumables(void)
+{
+    MockArgs ma = {0};
+    /*
+     * toner 68% (680/1000), drum 54% (5400 raw / 100), pages 8200 remaining
+     * drum_raw = 5400 = 0x1518 → LE bytes [0x18, 0x15]
+     * maint_raw = 8200 = 0x2008 → LE bytes [0x08, 0x20]
+     */
+    ma.resp_len = build_snmp_consumables_response(ma.resp, sizeof(ma.resp),
+                                                   680, 1000, 5400u, 8200u);
+    ASSERT(ma.resp_len > 0, "build consumables response should succeed");
+
+    pthread_t tid = start_mock(&ma);
+
+    BrotherConsumables c = {0};
+    int result = brother_get_consumables(MOCK_HOST, &c);
+
+    pthread_join(tid, NULL);
+
+    ASSERT(result == 0,             "get_consumables should return 0 on success");
+    ASSERT(c.toner_pct == 68,       "toner percent should be 68");
+    ASSERT(c.drum_pct == 54,        "drum percent should be 54 (5400/100)");
+    ASSERT(c.pages_until_maint == 8200, "pages until maintenance should be 8200");
+}
+
+/*
+ * test_probe_model — verify that brother_probe returns 1 and populates the
+ * model string when the mock responds with a sysDescr containing "Brother".
+ */
+static void test_probe_model(void)
+{
+    MockArgs ma = {0};
+    ma.resp_len = build_snmp_probe_response(ma.resp, sizeof(ma.resp),
+                                             "Brother MFC-L2750DW series");
+    ASSERT(ma.resp_len > 0, "build probe-model response should succeed");
+
+    pthread_t tid = start_mock(&ma);
+
+    char model[64] = {0};
+    int result = brother_probe(MOCK_HOST, model, sizeof(model));
+
+    pthread_join(tid, NULL);
+
+    ASSERT(result == 1, "probe should return 1 when mock responds with Brother model");
+    ASSERT(strstr(model, "Brother") != NULL,
+           "model string should contain 'Brother'");
+}
+
+/*
+ * test_get_toner_low — mock returns toner at 5% (very low).
+ * Assert that toner_pct == 5.
+ */
+static void test_get_toner_low(void)
+{
+    MockArgs ma = {0};
+    /* state=3(idle), pages=500, toner_cur=50, toner_max=1000, toner_low=1
+     * Expected toner_pct = 50*100/1000 = 5 */
+    ma.resp_len = build_snmp_status_response(ma.resp, sizeof(ma.resp),
+                                              3, 500, 50, 1000, 1);
+    ASSERT(ma.resp_len > 0, "build toner-low response should succeed");
+
+    pthread_t tid = start_mock(&ma);
+
+    BrotherStatus st = {0};
+    int result = brother_get_status(MOCK_HOST, &st);
+
+    pthread_join(tid, NULL);
+
+    ASSERT(result == 0,       "get_status should return 0 on success");
+    ASSERT(st.toner_pct == 5, "toner_pct should be 5 when toner is very low");
+}
+
+/*
+ * test_invalid_ip — call brother_get_status with an address that has nothing
+ * listening; the call must fail with rc == -1 (or time out and return -1).
+ * No mock is started.
+ */
+static void test_invalid_ip(void)
+{
+    BrotherStatus st = {0};
+    int result = brother_get_status("127.0.0.2", &st);
+    ASSERT(result == -1, "get_status should return -1 for unreachable IP");
+}
+
+/*
+ * test_get_consumables_drum — verify that brother_get_consumables returns 0
+ * and that drum_pct is > 0 when the mock provides a non-zero drum value.
+ */
+static void test_get_consumables_drum(void)
+{
+    MockArgs ma = {0};
+    /*
+     * toner 80% (800/1000), drum 75% (7500 raw / 100), pages 10000 remaining
+     * drum_raw = 7500 = 0x1D4C → LE bytes [0x4C, 0x1D]
+     * maint_raw = 10000 = 0x2710 → LE bytes [0x10, 0x27]
+     */
+    ma.resp_len = build_snmp_consumables_response(ma.resp, sizeof(ma.resp),
+                                                   800, 1000, 7500u, 10000u);
+    ASSERT(ma.resp_len > 0, "build consumables-drum response should succeed");
+
+    pthread_t tid = start_mock(&ma);
+
+    BrotherConsumables c = {0};
+    int result = brother_get_consumables(MOCK_HOST, &c);
+
+    pthread_join(tid, NULL);
+
+    ASSERT(result == 0,    "get_consumables should return 0 on success");
+    ASSERT(c.drum_pct > 0, "drum_pct should be greater than 0");
+}
+
 /* ── main ────────────────────────────────────────────────────────────────── */
 
 int main(void)
@@ -554,6 +746,11 @@ int main(void)
     RUN_TEST(test_probe_unreachable);
     RUN_TEST(test_get_status);
     RUN_TEST(test_toner_low_flag);
+    RUN_TEST(test_get_consumables);
+    RUN_TEST(test_probe_model);
+    RUN_TEST(test_get_toner_low);
+    RUN_TEST(test_invalid_ip);
+    RUN_TEST(test_get_consumables_drum);
 
     printf("\n%d test(s) run, %d failed.\n", g_tests_run, g_tests_failed);
     return g_tests_failed == 0 ? 0 : 1;

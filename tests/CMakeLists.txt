@@ -2,6 +2,12 @@ add_executable(test-runner
     unit/test_runner.c
     unit/test_config.c
     unit/test_base64.c
+    unit/test_device_store.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/infrastructure/gree_client.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/infrastructure/roborock_client.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/core/base64.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/core/config.c
+    ${CMAKE_SOURCE_DIR}/libappliances/src/core/logger.c
 )
 
 target_include_directories(test-runner PRIVATE
@@ -9,7 +15,7 @@ target_include_directories(test-runner PRIVATE
     ${CMAKE_SOURCE_DIR}/tests/common
 )
 
-target_link_libraries(test-runner PRIVATE appliances)
+target_link_libraries(test-runner PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 
 add_test(NAME unit-tests COMMAND test-runner)
 
@@ -98,3 +104,36 @@ target_compile_definitions(test-samsung-tv-functional PRIVATE
 target_link_libraries(test-samsung-tv-functional PRIVATE Threads::Threads)
 
 add_test(NAME samsung-tv-functional-tests COMMAND test-samsung-tv-functional)
+
+# ── libpty: PTY test helper (ported from email-cli, no external deps) ────
+add_library(pty STATIC
+    ${CMAKE_SOURCE_DIR}/tests/libpty/pty_session.c
+    ${CMAKE_SOURCE_DIR}/tests/libpty/pty_screen.c
+    ${CMAKE_SOURCE_DIR}/tests/libpty/pty_sync.c
+)
+
+target_include_directories(pty PUBLIC
+    ${CMAKE_SOURCE_DIR}/tests/libpty
+)
+
+target_link_libraries(pty PRIVATE util)
+
+# ── PTY CLI tests — test the built binary via a real pseudo-terminal ─────
+
+set(PTY_DEFS HOME_APPLIANCES_BIN="${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/home-appliances")
+
+function(add_pty_test name src)
+    add_executable(${name} ${src} ${CMAKE_SOURCE_DIR}/tests/common/test_helpers.h)
+    target_include_directories(${name} PRIVATE
+        ${CMAKE_SOURCE_DIR}/tests/common
+    )
+    target_compile_definitions(${name} PRIVATE ${PTY_DEFS})
+    target_link_libraries(${name} PRIVATE pty)
+    add_dependencies(${name} home-appliances)
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+add_pty_test(test-pty-ac      ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_ac.c)
+add_pty_test(test-pty-vacuum  ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_vacuum.c)
+add_pty_test(test-pty-tv      ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_tv.c)
+add_pty_test(test-pty-printer ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_printer.c)

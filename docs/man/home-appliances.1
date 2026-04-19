@@ -1,0 +1,375 @@
+.TH HOME-APPLIANCES 1 "2026-04-19" "1.0.0" "Home Appliances CLI"
+.SH NAME
+home-appliances \- control home appliances from the command line
+.SH SYNOPSIS
+.B home-appliances
+[\fIOPTION\fR] \fICOMMAND\fR [\fISUBCOMMAND\fR] [\fIIP\fR] [\fIARGS\fR]...
+.SH DESCRIPTION
+.B home-appliances
+is a command-line tool for controlling home appliances on the local network.
+It supports Gree air conditioner units (UDP port 7000, AES-128-ECB, LAN v2 protocol),
+Roborock robot vacuum cleaners, Samsung smart TVs, and Brother network printers.
+.PP
+Devices are discovered on the
+.B 192.168.1.0/24
+subnet and their addresses are cached in the user configuration directory.
+.SH COMMANDS
+.SS General
+.TP
+.B version
+Print the program version and exit.
+.TP
+.B help
+Print a help summary and exit.
+.SS AC (Gree)
+.TP
+.BI "ac list"
+Discover and list all Gree AC units on the local network.
+Stores found devices for later use.
+.TP
+.BI "ac bind " IP
+Bind to the Gree AC unit at the given
+.I IP
+address and store the device key for subsequent commands.
+.TP
+.BI "ac status " IP
+Print the full status of the AC unit at
+.IR IP .
+.TP
+.BI "ac temp " IP
+Print the current target temperature of the AC unit at
+.IR IP .
+.TP
+.BI "ac on " IP
+Turn the AC unit at
+.I IP
+on.
+.TP
+.BI "ac off " IP
+Turn the AC unit at
+.I IP
+off.
+.TP
+.BI "ac set " IP " " TEMP
+Set the target temperature of the AC unit at
+.I IP
+to
+.I TEMP
+degrees Celsius.
+.TP
+.BI "ac swing-v " IP " " MODE
+Set vertical swing mode of the AC unit at
+.IR IP .
+.I MODE
+is one of:
+.BR default ,
+.BR fixed ,
+.BR full ,
+.BR top ,
+.BR mid-top ,
+.BR mid ,
+.BR mid-bot ,
+.BR bot .
+.TP
+.BI "ac swing-h " IP " " MODE
+Set horizontal swing mode of the AC unit at
+.IR IP .
+.I MODE
+is one of:
+.BR default ,
+.BR fixed ,
+.BR full ,
+.BR left ,
+.BR mid-left ,
+.BR mid ,
+.BR mid-right ,
+.BR right .
+.TP
+.BI "ac xfan " IP " " STATE
+Enable or disable the xfan feature on the AC unit at
+.IR IP .
+.I STATE
+is
+.B on
+or
+.BR off .
+.TP
+.BI "ac health " IP " " STATE
+Enable or disable the health (ionizer) feature on the AC unit at
+.IR IP .
+.I STATE
+is
+.B on
+or
+.BR off .
+.TP
+.BI "ac air " IP " " STATE
+Enable or disable the fresh air feature on the AC unit at
+.IR IP .
+.I STATE
+is
+.B on
+or
+.BR off .
+.TP
+.BI "ac antifrost " IP " " STATE
+Enable or disable the anti-frost protection on the AC unit at
+.IR IP .
+.I STATE
+is
+.B on
+or
+.BR off .
+.TP
+.BI "ac unit " IP " " UNIT
+Set the temperature display unit on the AC unit at
+.IR IP .
+.I UNIT
+is
+.B celsius
+or
+.BR fahrenheit .
+.SS Vacuum (Roborock)
+.TP
+.BI "vacuum status " IP
+Print the current status of the robot vacuum at
+.IR IP .
+.TP
+.BI "vacuum consumables " IP
+Print the consumable levels (brush, filter, etc.) of the vacuum at
+.IR IP .
+.TP
+.BI "vacuum start " IP
+Start a full cleaning run on the vacuum at
+.IR IP .
+.TP
+.BI "vacuum stop " IP
+Stop the current cleaning run on the vacuum at
+.IR IP .
+.TP
+.BI "vacuum pause " IP
+Pause the current cleaning run on the vacuum at
+.IR IP .
+.TP
+.BI "vacuum dock " IP
+Send the vacuum at
+.I IP
+back to its docking station.
+.TP
+.BI "vacuum spot " IP
+Start a spot-cleaning run on the vacuum at
+.IR IP .
+.TP
+.BI "vacuum find " IP
+Play a locate sound on the vacuum at
+.I IP
+to help find it.
+.TP
+.BI "vacuum fan " IP " " LEVEL
+Set the fan speed level on the vacuum at
+.IR IP .
+.I LEVEL
+is one of:
+.BR silent ,
+.BR balanced ,
+.BR turbo ,
+.BR max .
+.TP
+.BI "vacuum reset-main " IP
+Reset the main brush consumable counter on the vacuum at
+.IR IP .
+.TP
+.BI "vacuum reset-side " IP
+Reset the side brush consumable counter on the vacuum at
+.IR IP .
+.TP
+.BI "vacuum reset-filter " IP
+Reset the filter consumable counter on the vacuum at
+.IR IP .
+.TP
+.BI "vacuum reset-sensor " IP
+Reset the sensor consumable counter on the vacuum at
+.IR IP .
+.SS TV (Samsung)
+.TP
+.BI "tv probe " IP
+Probe the Samsung TV at
+.I IP
+and print device information.
+.TP
+.BI "tv key " IP " " KEY
+Send a remote control key press to the TV at
+.IR IP .
+.I KEY
+is any Samsung remote key name (e.g.
+.BR KEY_POWER ,
+.BR KEY_VOLUMEUP ).
+.TP
+.BI "tv volup " IP
+Increase the volume by one step on the TV at
+.IR IP .
+.TP
+.BI "tv voldown " IP
+Decrease the volume by one step on the TV at
+.IR IP .
+.TP
+.BI "tv mute " IP
+Toggle mute on the TV at
+.IR IP .
+.TP
+.BI "tv power " IP
+Toggle the power state of the TV at
+.IR IP .
+.TP
+.BI "tv off " IP
+Turn off the TV at
+.IR IP .
+.TP
+.BI "tv source " IP
+Switch the input source on the TV at
+.IR IP .
+.TP
+.BI "tv hdmi " IP " " NUM
+Switch to HDMI input number
+.I NUM
+on the TV at
+.IR IP .
+.TP
+.BI "tv channel " IP " " CH
+Tune the TV at
+.I IP
+to channel number
+.IR CH .
+.SS Printer (Brother)
+.TP
+.BI "printer probe " IP
+Probe the Brother printer at
+.I IP
+and print device information.
+.TP
+.BI "printer status " IP
+Print the current status of the printer at
+.IR IP .
+.TP
+.BI "printer toner " IP
+Print the toner level of the printer at
+.IR IP .
+.TP
+.BI "printer pages " IP
+Print the page counter of the printer at
+.IR IP .
+.TP
+.BI "printer consumables " IP
+Print the consumable levels of the printer at
+.IR IP .
+.SH OPTIONS
+.TP
+.BR \-v ", " \-\-verbose
+Enable verbose output. Additional diagnostic messages are printed to standard error.
+.TP
+.B \-\-version
+Print the program version and exit.
+.TP
+.B \-\-help
+Print a help summary and exit.
+.TP
+.B \-\-quiet
+Suppress all output except errors. When used with
+.BR "printer status" ,
+exits with status 2 if the printer reports a device error state.
+.SH FILES
+.TP
+.I ~/.config/home-appliances/config
+Main configuration file. Stores preferences such as default subnet and logging level.
+.TP
+.I ~/.config/home-appliances/gree_devices
+Cached list of discovered Gree AC units (IP address and device key pairs).
+Updated by
+.BR "ac list" " and " "ac bind" .
+.TP
+.I ~/.config/home-appliances/roborock_devices
+Cached list of discovered Roborock vacuum cleaners (IP address and token pairs).
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+General error (invalid arguments, network failure, device unreachable, etc.).
+.TP
+.B 2
+Device error state. Only returned by
+.B "printer status"
+when the
+.B \-\-quiet
+option is given and the printer reports an error condition.
+.SH EXAMPLES
+Discover all Gree AC units on the local network:
+.PP
+.RS
+.EX
+home-appliances ac list
+.EE
+.RE
+.PP
+Bind to an AC unit and then set it to 22 degrees:
+.PP
+.RS
+.EX
+home-appliances ac bind 192.168.1.50
+home-appliances ac set 192.168.1.50 22
+.EE
+.RE
+.PP
+Turn on the AC unit and enable health mode:
+.PP
+.RS
+.EX
+home-appliances ac on 192.168.1.50
+home-appliances ac health 192.168.1.50 on
+.EE
+.RE
+.PP
+Send the robot vacuum to its dock:
+.PP
+.RS
+.EX
+home-appliances vacuum dock 192.168.1.70
+.EE
+.RE
+.PP
+Check vacuum consumable levels:
+.PP
+.RS
+.EX
+home-appliances vacuum consumables 192.168.1.70
+.EE
+.RE
+.PP
+Switch the TV to HDMI 2:
+.PP
+.RS
+.EX
+home-appliances tv hdmi 192.168.1.80 2
+.EE
+.RE
+.PP
+Check printer toner level with verbose output:
+.PP
+.RS
+.EX
+home-appliances -v printer toner 192.168.1.90
+.EE
+.RE
+.PP
+Check printer status quietly (exit code 2 if printer error):
+.PP
+.RS
+.EX
+home-appliances --quiet printer status 192.168.1.90
+.EE
+.RE
+.SH SEE ALSO
+.BR gree (7),
+.BR avahi-browse (1),
+.BR nmap (1)

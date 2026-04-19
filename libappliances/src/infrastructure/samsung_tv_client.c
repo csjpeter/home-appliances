@@ -310,6 +310,66 @@ static int read_auth_response(int fd)
     return (int)resp[2];
 }
 
+/* ── Connect and authenticate ─────────────────────────────────────────── */
+
+/*
+ * tv_connect_and_auth — connect to the TV and complete the auth handshake.
+ *
+ * Retries on WAITING response (TV showing accept dialog).
+ * On the first WAITING, prints a message to stderr for the user.
+ *
+ * Returns an open fd (>= 0) on success.  Caller must close() the fd.
+ * Returns -1 on error (denied, timeout, or connect failure).
+ */
+static int tv_connect_and_auth(const char *ip)
+{
+    unsigned char auth_pkt[256];
+    int auth_len = build_auth_packet(auth_pkt, sizeof(auth_pkt));
+    if (auth_len < 0)
+        return -1;
+
+    int fd = tcp_connect_timeout(ip, SAMSUNG_TV_PORT);
+    if (fd < 0) {
+        LOG_ERROR_MSG("samsung_tv: cannot connect to %s:%d", ip, SAMSUNG_TV_PORT);
+        return -1;
+    }
+
+    if (send(fd, auth_pkt, (size_t)auth_len, 0) != auth_len) {
+        LOG_ERROR_MSG("samsung_tv: send auth failed: %s", strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    for (int attempt = 0; attempt < SAMSUNG_TV_WAIT_RETRIES; attempt++) {
+        int code = read_auth_response(fd);
+        if (code < 0) {
+            close(fd);
+            return -1;
+        }
+        if (code == 1)
+            return fd;  /* granted */
+        if (code == 0) {
+            LOG_WARN_MSG("samsung_tv: access denied by %s", ip);
+            close(fd);
+            return -1;
+        }
+        /* code == 2: waiting */
+        if (attempt == 0)
+            fprintf(stderr,
+                    "Waiting for TV to accept connection — please approve on screen...\n");
+        usleep(SAMSUNG_TV_WAIT_SLEEP_US);
+        if (send(fd, auth_pkt, (size_t)auth_len, 0) != auth_len) {
+            LOG_ERROR_MSG("samsung_tv: re-send auth failed: %s", strerror(errno));
+            close(fd);
+            return -1;
+        }
+    }
+
+    LOG_ERROR_MSG("samsung_tv: timed out waiting for acceptance on %s", ip);
+    close(fd);
+    return -1;
+}
+
 /* ── Public API ──────────────────────────────────────────────────────── */
 
 int samsung_tv_probe(const char *ip)
@@ -322,61 +382,10 @@ int samsung_tv_probe(const char *ip)
 
 int samsung_tv_send_key(const char *ip, const char *key_code)
 {
-    /* Build auth packet once; it is static content. */
-    unsigned char auth_pkt[256];
-    int auth_len = build_auth_packet(auth_pkt, sizeof(auth_pkt));
-    if (auth_len < 0) {
-        LOG_ERROR_MSG("%s", "samsung_tv_send_key: failed to build auth packet");
+    int fd RAII_WITH_CLEANUP(close_fd) = tv_connect_and_auth(ip);
+    if (fd < 0)
         return -1;
-    }
 
-    int fd RAII_WITH_CLEANUP(close_fd) = tcp_connect_timeout(ip, SAMSUNG_TV_PORT);
-    if (fd < 0) {
-        LOG_ERROR_MSG("samsung_tv_send_key: cannot connect to %s:%d", ip, SAMSUNG_TV_PORT);
-        return -1;
-    }
-
-    /* Send auth packet. */
-    if (send(fd, auth_pkt, (size_t)auth_len, 0) != auth_len) {
-        LOG_ERROR_MSG("samsung_tv_send_key: send auth failed: %s", strerror(errno));
-        return -1;
-    }
-
-    /* Read auth response — retry on WAITING. */
-    int granted = 0;
-    for (int attempt = 0; attempt < SAMSUNG_TV_WAIT_RETRIES; attempt++) {
-        int code = read_auth_response(fd);
-        if (code < 0)
-            return -1;
-
-        if (code == 1) {
-            granted = 1;
-            break;
-        }
-        if (code == 0) {
-            LOG_WARN_MSG("samsung_tv_send_key: access denied by %s", ip);
-            return -1;
-        }
-        /* code == 2: waiting */
-        if (attempt == 0)
-            LOG_INFO_MSG("samsung_tv_send_key: TV %s waiting for user acceptance "
-                         "(up to %d retries)...", ip, SAMSUNG_TV_WAIT_RETRIES);
-        usleep(SAMSUNG_TV_WAIT_SLEEP_US);
-
-        /* Re-send auth to prompt another response. */
-        if (send(fd, auth_pkt, (size_t)auth_len, 0) != auth_len) {
-            LOG_ERROR_MSG("samsung_tv_send_key: re-send auth failed: %s",
-                          strerror(errno));
-            return -1;
-        }
-    }
-
-    if (!granted) {
-        LOG_ERROR_MSG("samsung_tv_send_key: timed out waiting for acceptance on %s", ip);
-        return -1;
-    }
-
-    /* Build and send the key packet. */
     unsigned char key_pkt[256];
     int key_len = build_key_packet(key_code, key_pkt, sizeof(key_pkt));
     if (key_len < 0) {
@@ -391,5 +400,33 @@ int samsung_tv_send_key(const char *ip, const char *key_code)
     }
 
     LOG_INFO_MSG("samsung_tv_send_key: sent '%s' to %s", key_code, ip);
+    return 0;
+}
+
+int samsung_tv_send_keys(const char *ip, const char **keys, int delay_ms)
+{
+    int fd RAII_WITH_CLEANUP(close_fd) = tv_connect_and_auth(ip);
+    if (fd < 0)
+        return -1;
+
+    for (int i = 0; keys[i] != NULL; i++) {
+        if (i > 0 && delay_ms > 0)
+            usleep((unsigned int)delay_ms * 1000u);
+
+        unsigned char key_pkt[256];
+        int key_len = build_key_packet(keys[i], key_pkt, sizeof(key_pkt));
+        if (key_len < 0) {
+            LOG_ERROR_MSG("samsung_tv_send_keys: failed to build key packet for '%s'",
+                          keys[i]);
+            return -1;
+        }
+
+        if (send(fd, key_pkt, (size_t)key_len, 0) != key_len) {
+            LOG_ERROR_MSG("samsung_tv_send_keys: send failed for '%s': %s",
+                          keys[i], strerror(errno));
+            return -1;
+        }
+        LOG_INFO_MSG("samsung_tv_send_keys: sent '%s' to %s", keys[i], ip);
+    }
     return 0;
 }

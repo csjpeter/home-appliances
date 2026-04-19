@@ -602,6 +602,7 @@ int roborock_save(const RoborockDevice *dev)
         LOG_ERROR_MSG("roborock_save: cannot open %s: %s", path, strerror(errno));
         return -1;
     }
+    chmod(path, 0600);
 
     int written = 0;
     char *line = existing;
@@ -671,8 +672,8 @@ int roborock_load(const char *ip, RoborockDevice *dev)
 
         if (hex_to_bytes(token_hex, dev->token, 16) != 0)
         {
-            LOG_ERROR_MSG("roborock_load: invalid token hex for %s", ip);
-            return -1;
+            LOG_WARN_MSG("roborock_load: corrupt token for %s, skipping", ip);
+            continue;
         }
 
         unsigned long id = strtoul(dev_id_hex, NULL, 16);

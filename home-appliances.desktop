@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Home Appliances
+Comment=Control home appliances from the command line
+Exec=home-appliances %u
+Icon=utilities-terminal
+Terminal=true
+Categories=Utility;

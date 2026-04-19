@@ -16,6 +16,13 @@ typedef struct
     char model[64];   /* sysDescr string, empty if unavailable */
 } BrotherStatus;
 
+typedef struct
+{
+    int toner_pct;          /* 0-100, -1=unavailable */
+    int drum_pct;           /* 0-100, -1=unavailable */
+    int pages_until_maint;  /* pages remaining, -1=unavailable */
+} BrotherConsumables;
+
 /**
  * @brief Probe printer reachability via SNMP sysDescr.
  * @param ip        Printer IPv4 address.
@@ -32,5 +39,14 @@ int brother_probe(const char *ip, char *model, size_t model_len);
  * @return 0 on success, -1 on error.
  */
 int brother_get_status(const char *ip, BrotherStatus *out);
+
+/**
+ * @brief Query consumable levels via Brother proprietary SNMP OIDs.
+ *        Falls back to -1 for drum/maintenance if OIDs not supported by model.
+ * @param ip  Printer IPv4 address.
+ * @param out Output consumables struct.
+ * @return 0 on success, -1 on error.
+ */
+int brother_get_consumables(const char *ip, BrotherConsumables *out);
 
 #endif /* BROTHER_CLIENT_H */

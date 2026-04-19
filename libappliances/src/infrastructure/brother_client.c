@@ -27,6 +27,8 @@
 #define OID_TONER_CUR      "1.3.6.1.2.1.43.11.1.1.9.1.1"
 #define OID_TONER_MAX      "1.3.6.1.2.1.43.11.1.1.8.1.1"
 #define OID_TONER_LOW      "1.3.6.1.4.1.2435.2.3.9.1.1.2.10.1"
+#define OID_DRUM_INFO      "1.3.6.1.4.1.2435.2.3.9.4.2.1.5.5.8.0"
+#define OID_MAINT_NEXT     "1.3.6.1.4.1.2435.2.3.9.4.2.1.5.5.11.0"
 
 /* ── BER constants ───────────────────────────────────────────────────────── */
 
@@ -707,6 +709,72 @@ int brother_get_status(const char *ip, BrotherStatus *out)
     val = 0;
     if (parse_snmp_response(resp, n, 4, &val, NULL, 0) == 0)
         out->toner_low = val;
+
+    return 0;
+}
+
+int brother_get_consumables(const char *ip, BrotherConsumables *out)
+{
+    static const char *oids[] =
+    {
+        OID_TONER_CUR,
+        OID_TONER_MAX,
+        OID_DRUM_INFO,
+        OID_MAINT_NEXT,
+    };
+
+    out->toner_pct         = -1;
+    out->drum_pct          = -1;
+    out->pages_until_maint = -1;
+
+    unsigned char req[512];
+    int req_len = build_snmp_get(oids, 4, req, sizeof(req));
+    if (req_len < 0)
+    {
+        LOG_ERROR_MSG("brother: failed to build consumables SNMP packet");
+        return -1;
+    }
+
+    unsigned char resp[1024];
+    int n = snmp_send_recv(ip, req, req_len, resp, sizeof(resp), 5000);
+    if (n <= 0)
+    {
+        LOG_WARN_MSG("brother: no SNMP response from %s", ip);
+        return -1;
+    }
+
+    int val;
+
+    /* varbinds 0 & 1: toner current and max */
+    int toner_cur = -1, toner_max = -1;
+    val = 0;
+    if (parse_snmp_response(resp, n, 0, &val, NULL, 0) == 0)
+        toner_cur = val;
+    val = 0;
+    if (parse_snmp_response(resp, n, 1, &val, NULL, 0) == 0)
+        toner_max = val;
+    if (toner_max > 0 && toner_cur >= 0)
+        out->toner_pct = toner_cur * 100 / toner_max;
+
+    /* varbind 2: drum OctetString — first 2 bytes LE uint16 / 100 = percent */
+    char raw[8] = {0};
+    if (parse_snmp_response(resp, n, 2, NULL, raw, sizeof(raw)) == 0)
+    {
+        unsigned int le = (unsigned int)(unsigned char)raw[0]
+                        | ((unsigned int)(unsigned char)raw[1] << 8);
+        out->drum_pct = (int)(le / 100u);
+        if (out->drum_pct > 100)
+            out->drum_pct = 100;
+    }
+
+    /* varbind 3: pages until maintenance — first 2 bytes LE uint16 */
+    memset(raw, 0, sizeof(raw));
+    if (parse_snmp_response(resp, n, 3, NULL, raw, sizeof(raw)) == 0)
+    {
+        unsigned int le = (unsigned int)(unsigned char)raw[0]
+                        | ((unsigned int)(unsigned char)raw[1] << 8);
+        out->pages_until_maint = (int)le;
+    }
 
     return 0;
 }

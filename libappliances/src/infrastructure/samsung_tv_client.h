@@ -28,4 +28,14 @@ int samsung_tv_probe(const char *ip);
  */
 int samsung_tv_send_key(const char *ip, const char *key_code);
 
+/**
+ * @brief Send multiple key codes in one TCP session.
+ *        Authenticates once, sends each key with delay_ms between them.
+ * @param ip       TV IPv4 address.
+ * @param keys     NULL-terminated array of KEY_* strings.
+ * @param delay_ms Delay between keys in milliseconds (0 = no delay).
+ * @return 0 on success, -1 on error.
+ */
+int samsung_tv_send_keys(const char *ip, const char **keys, int delay_ms);
+
 #endif /* SAMSUNG_TV_CLIENT_H */

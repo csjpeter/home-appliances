@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* ── Generic helpers ─────────────────────────────────────────────────── */
 
@@ -131,7 +132,7 @@ static int cmd_ac_bind(const char *ip, const Config *cfg)
         }
     }
     if (!target) {
-        fprintf(stderr, "Device not found at %s\n", ip);
+        fprintf(stderr, "Device not found at %s. Is the AC on and on the same network?\n", ip);
         gree_device_list_free(&scanned);
         return -1;
     }
@@ -235,7 +236,7 @@ static int cmd_ac_temp_one(const char *ip)
         return -1;
     GreeDevice *dev = gree_find_device(&saved, ip);
     if (!dev) {
-        fprintf(stderr, "Device %s not bound.\n", ip);
+        fprintf(stderr, "Device %s not bound. Run: ac bind %s\n", ip, ip);
         gree_device_list_free(&saved);
         return -1;
     }
@@ -365,7 +366,7 @@ static int ac_set_single(const char *ip, const char *gree_key, int gree_val)
     if (gree_client_load_bound(&saved) != 0) return -1;
     GreeDevice *dev = gree_find_device(&saved, ip);
     if (!dev) {
-        fprintf(stderr, "Device %s not bound.\n", ip);
+        fprintf(stderr, "Device %s not bound. Run: ac bind %s\n", ip, ip);
         gree_device_list_free(&saved);
         return -1;
     }
@@ -374,6 +375,26 @@ static int ac_set_single(const char *ip, const char *gree_key, int gree_val)
     int rc = gree_client_set(dev, keys, vals, 1);
     gree_device_list_free(&saved);
     return rc;
+}
+
+/* After setting power, query status for room temperature feedback. */
+static int cmd_ac_power(const char *ip, int on_val)
+{
+    if (ac_set_single(ip, "Pow", on_val) != 0)
+        return -1;
+    printf("AC %s.\n", on_val ? "on" : "off");
+
+    GreeDeviceList saved = {0};
+    if (gree_client_load_bound(&saved) == 0) {
+        GreeDevice *dev = gree_find_device(&saved, ip);
+        if (dev) {
+            GreeStatus st = {0};
+            if (gree_client_get_status(dev, &st) == 0)
+                printf("Room temp: %d°C\n", st.room_temp);
+        }
+        gree_device_list_free(&saved);
+    }
+    return 0;
 }
 
 static int cmd_ac_set(const char *ip, char **args, int nargs)
@@ -409,6 +430,8 @@ static int cmd_ac_set(const char *ip, char **args, int nargs)
     gree_device_list_free(&saved);
     if (rc != 0)
         fprintf(stderr, "Set command failed for %s\n", ip);
+    else
+        printf("Set.\n");
     return rc;
 }
 
@@ -607,12 +630,73 @@ static int cmd_printer_status(const char *ip)
     return 0;
 }
 
+static int cmd_printer_toner(const char *ip, int raw_mode)
+{
+    BrotherStatus st = {0};
+    if (brother_get_status(ip, &st) != 0) {
+        fprintf(stderr, "%s: failed to query printer\n", ip);
+        return -1;
+    }
+    if (st.toner_pct < 0) {
+        if (!raw_mode)
+            fprintf(stderr, "%s: toner unavailable\n", ip);
+        return -1;
+    }
+    if (raw_mode)
+        printf("%d\n", st.toner_pct);
+    else
+        printf("Toner: %d%%\n", st.toner_pct);
+    return 0;
+}
+
+static int cmd_printer_pages(const char *ip)
+{
+    BrotherStatus st = {0};
+    if (brother_get_status(ip, &st) != 0) {
+        fprintf(stderr, "%s: failed to query printer\n", ip);
+        return -1;
+    }
+    if (st.page_count < 0) {
+        fprintf(stderr, "%s: page count unavailable\n", ip);
+        return -1;
+    }
+    printf("Pages: %d\n", st.page_count);
+    return 0;
+}
+
+static int cmd_printer_consumables(const char *ip)
+{
+    BrotherConsumables c = {0};
+    if (brother_get_consumables(ip, &c) != 0) {
+        fprintf(stderr, "%s: failed to query consumables\n", ip);
+        return -1;
+    }
+    if (c.toner_pct >= 0)
+        printf("Toner:       %d%%%s\n", c.toner_pct, c.toner_pct < 20 ? " [!]" : "");
+    else
+        printf("Toner:       n/a\n");
+    if (c.drum_pct >= 0)
+        printf("Drum:        %d%%%s\n", c.drum_pct, c.drum_pct < 20 ? " [!]" : "");
+    else
+        printf("Drum:        n/a\n");
+    if (c.pages_until_maint >= 0)
+        printf("Maintenance: %d pages remaining\n", c.pages_until_maint);
+    else
+        printf("Maintenance: n/a\n");
+    return 0;
+}
+
 /* ── Usage ───────────────────────────────────────────────────────────── */
 
 static void print_usage(const char *prog)
 {
     fprintf(stderr,
         "Usage: %s <command> [options]\n"
+        "\n"
+        "Options:\n"
+        "  -v, --verbose    Enable verbose/debug output\n"
+        "  --version        Print version and exit\n"
+        "  --help           Show this help and exit\n"
         "\n"
         "General:\n"
         "  list                      Scan all appliances\n"
@@ -643,15 +727,18 @@ static void print_usage(const char *prog)
         "\n"
         "TV (Samsung) — tv <sub> <ip>:\n"
         "  tv probe <ip>             Check if TV is on\n"
-        "  tv key <ip> KEY_*         Send any key code\n"
-        "  tv volup|voldown|mute <ip>\n"
-        "  tv power|off <ip>\n"
+        "  tv key <ip> KEY1 [KEY2..] Send one or more key codes (300ms gap)\n"
+        "  tv volup|voldown <ip> [N] Send N times (default 1, 200ms gap)\n"
+        "  tv mute|power|off <ip>\n"
         "  tv source|hdmi <ip>\n"
         "  tv channel <ip> up|down\n"
         "\n"
         "Printer (Brother) — printer <sub> <ip>:\n"
-        "  printer probe <ip>        Check reachability\n"
-        "  printer status <ip>       State, toner, page count\n",
+        "  printer probe <ip>            Check reachability\n"
+        "  printer status <ip> [--quiet] State, toner, page count\n"
+        "  printer toner <ip> [--raw]    Toner level (--raw = integer only)\n"
+        "  printer pages <ip>            Page count\n"
+        "  printer consumables <ip>      Toner, drum, maintenance\n",
         prog);
 }
 
@@ -671,7 +758,18 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    logger_init(NULL, LOG_INFO);
+    int log_level = LOG_INFO;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--verbose") == 0 || strcmp(argv[i], "-v") == 0 ||
+            strcmp(argv[i], "--debug")   == 0 || strcmp(argv[i], "-d") == 0) {
+            log_level = LOG_DEBUG;
+            /* Remove this flag by shifting argv */
+            for (int j = i; j < argc - 1; j++) argv[j] = argv[j+1];
+            argc--;
+            i--;
+        }
+    }
+    logger_init(NULL, log_level);
 
     Config cfg = {0};
     if (config_load(&cfg) != 0) {
@@ -713,9 +811,9 @@ int main(int argc, char *argv[])
                 else if (strcmp(sub, "temp") == 0)
                     r = cmd_ac_temp_one(ips[i]);
                 else if (strcmp(sub, "on") == 0)
-                    r = ac_set_single(ips[i], "Pow", 1);
+                    r = cmd_ac_power(ips[i], 1);
                 else
-                    r = ac_set_single(ips[i], "Pow", 0);
+                    r = cmd_ac_power(ips[i], 0);
                 if (r != 0) ret = 1;
             }
 
@@ -736,7 +834,30 @@ int main(int argc, char *argv[])
                 else ret = ac_set_single(ip, "SwUpDn", on ? 1 : 0);
             } else if (strcmp(sub, "xfan") == 0) {
                 if (!on && !off) { fprintf(stderr, "xfan: on|off required\n"); ret = 1; }
-                else ret = ac_set_single(ip, "Blo", on ? 1 : 0);
+                else {
+                    if (on) {
+                        GreeDeviceList saved2 = {0};
+                        if (gree_client_load_bound(&saved2) == 0) {
+                            GreeDevice *dev2 = gree_find_device(&saved2, ip);
+                            if (dev2) {
+                                GreeStatus st2 = {0};
+                                if (gree_client_get_status(dev2, &st2) == 0
+                                    && st2.mode != GREE_MODE_COOL
+                                    && st2.mode != GREE_MODE_DRY) {
+                                    static const char *m[] =
+                                        {"auto","cool","dry","fan","heat"};
+                                    const char *ms = (st2.mode >= 0 && st2.mode <= 4)
+                                                     ? m[st2.mode] : "unknown";
+                                    fprintf(stderr,
+                                        "Warning: X-Fan is only effective in"
+                                        " cool/dry mode (current: %s)\n", ms);
+                                }
+                            }
+                            gree_device_list_free(&saved2);
+                        }
+                    }
+                    ret = ac_set_single(ip, "Blo", on ? 1 : 0);
+                }
             } else if (strcmp(sub, "health") == 0) {
                 if (!on && !off) { fprintf(stderr, "health: on|off required\n"); ret = 1; }
                 else ret = ac_set_single(ip, "Health", on ? 1 : 0);
@@ -778,45 +899,71 @@ int main(int argc, char *argv[])
         } else if (strcmp(sub, "consumables") == 0) {
             ret = cmd_vacuum_consumables(ip);
         } else if (strcmp(sub, "start") == 0) {
-            if (get_vacuum(ip, &dev) == 0) ret = roborock_start(&dev);
-            else ret = -1;
+            if (get_vacuum(ip, &dev) == 0) {
+                ret = roborock_start(&dev);
+                if (ret == 0) printf("Cleaning started.\n");
+            } else ret = -1;
         } else if (strcmp(sub, "stop") == 0) {
-            if (get_vacuum(ip, &dev) == 0) ret = roborock_stop(&dev);
-            else ret = -1;
+            if (get_vacuum(ip, &dev) == 0) {
+                ret = roborock_stop(&dev);
+                if (ret == 0) printf("Cleaning stopped.\n");
+            } else ret = -1;
         } else if (strcmp(sub, "pause") == 0) {
-            if (get_vacuum(ip, &dev) == 0) ret = roborock_pause(&dev);
-            else ret = -1;
+            if (get_vacuum(ip, &dev) == 0) {
+                ret = roborock_pause(&dev);
+                if (ret == 0) printf("Cleaning paused.\n");
+            } else ret = -1;
         } else if (strcmp(sub, "dock") == 0) {
-            if (get_vacuum(ip, &dev) == 0) ret = roborock_dock(&dev);
-            else ret = -1;
+            if (get_vacuum(ip, &dev) == 0) {
+                ret = roborock_dock(&dev);
+                if (ret == 0) {
+                    printf("Returning to dock...\n");
+                    sleep(3);
+                    RoborockStatus dock_st = {0};
+                    if (roborock_get_status(&dev, &dock_st) == 0)
+                        printf("State: %s\n", vacuum_state_str(dock_st.state));
+                    else
+                        printf("Command sent.\n");
+                }
+            } else ret = -1;
         } else if (strcmp(sub, "spot") == 0) {
-            if (get_vacuum(ip, &dev) == 0) ret = roborock_spot(&dev);
-            else ret = -1;
+            if (get_vacuum(ip, &dev) == 0) {
+                ret = roborock_spot(&dev);
+                if (ret == 0) printf("Spot cleaning started.\n");
+            } else ret = -1;
         } else if (strcmp(sub, "find") == 0) {
-            if (get_vacuum(ip, &dev) == 0) ret = roborock_find(&dev);
-            else ret = -1;
+            if (get_vacuum(ip, &dev) == 0) {
+                ret = roborock_find(&dev);
+                if (ret == 0) printf("Locating robot...\n");
+            } else ret = -1;
         } else if (strcmp(sub, "fan") == 0) {
             if (argc < 5) { fprintf(stderr, "vacuum fan: missing level\n"); ret = 1; goto done; }
             int level = parse_fan_level(argv[4]);
             if (level < 0) { fprintf(stderr, "vacuum fan: silent|balanced|turbo|max|gentle\n"); ret = 1; goto done; }
-            if (get_vacuum(ip, &dev) == 0) ret = roborock_set_fan(&dev, level);
-            else ret = -1;
+            if (get_vacuum(ip, &dev) == 0) {
+                ret = roborock_set_fan(&dev, level);
+                if (ret == 0) printf("Fan speed set.\n");
+            } else ret = -1;
         } else if (strcmp(sub, "reset-brush") == 0) {
-            if (get_vacuum(ip, &dev) == 0)
+            if (get_vacuum(ip, &dev) == 0) {
                 ret = roborock_reset_consumable(&dev, "main_brush_work_time");
-            else ret = -1;
+                if (ret == 0) printf("Main brush reset.\n");
+            } else ret = -1;
         } else if (strcmp(sub, "reset-side-brush") == 0) {
-            if (get_vacuum(ip, &dev) == 0)
+            if (get_vacuum(ip, &dev) == 0) {
                 ret = roborock_reset_consumable(&dev, "side_brush_work_time");
-            else ret = -1;
+                if (ret == 0) printf("Side brush reset.\n");
+            } else ret = -1;
         } else if (strcmp(sub, "reset-filter") == 0) {
-            if (get_vacuum(ip, &dev) == 0)
+            if (get_vacuum(ip, &dev) == 0) {
                 ret = roborock_reset_consumable(&dev, "filter_work_time");
-            else ret = -1;
+                if (ret == 0) printf("Filter reset.\n");
+            } else ret = -1;
         } else if (strcmp(sub, "reset-sensor") == 0) {
-            if (get_vacuum(ip, &dev) == 0)
+            if (get_vacuum(ip, &dev) == 0) {
                 ret = roborock_reset_consumable(&dev, "sensor_dirty_time");
-            else ret = -1;
+                if (ret == 0) printf("Sensor reset.\n");
+            } else ret = -1;
         } else {
             fprintf(stderr, "Unknown vacuum subcommand: %s\n", sub);
             print_usage(argv[0]);
@@ -836,10 +983,47 @@ int main(int argc, char *argv[])
             ret = cmd_tv_probe(ip);
         } else if (strcmp(sub, "key") == 0) {
             if (argc < 5) { fprintf(stderr, "tv key: missing KEY_*\n"); ret = 1; }
-            else          ret = cmd_tv_key(ip, argv[4]);
-        } else if (strcmp(sub, "volup")   == 0) { ret = cmd_tv_key(ip, "KEY_VOLUP");   }
-        else if (strcmp(sub, "voldown") == 0) { ret = cmd_tv_key(ip, "KEY_VOLDOWN"); }
-        else if (strcmp(sub, "mute")    == 0) { ret = cmd_tv_key(ip, "KEY_MUTE");    }
+            else {
+                int nk = argc - 4;
+                if (nk > 64) nk = 64;
+                const char *keys[65];
+                for (int i = 0; i < nk; i++) {
+                    keys[i] = argv[4 + i];
+                    if (!is_known_key(keys[i]))
+                        fprintf(stderr, "Warning: '%s' not in known key list\n",
+                                keys[i]);
+                }
+                keys[nk] = NULL;
+                if (nk == 1) {
+                    ret = cmd_tv_key(ip, keys[0]);
+                } else {
+                    if (samsung_tv_send_keys(ip, keys, 300) != 0) {
+                        fprintf(stderr, "%s: failed to send keys\n", ip);
+                        ret = 1;
+                    } else {
+                        for (int i = 0; i < nk; i++)
+                            printf("%s: sent %s\n", ip, keys[i]);
+                    }
+                }
+            }
+        } else if (strcmp(sub, "volup") == 0 || strcmp(sub, "voldown") == 0) {
+            const char *vkey = (strcmp(sub, "volup") == 0) ? "KEY_VOLUP" : "KEY_VOLDOWN";
+            int vn = (argc > 4) ? atoi(argv[4]) : 1;
+            if (vn <= 0 || vn > 64) vn = 1;
+            if (vn == 1) {
+                ret = cmd_tv_key(ip, vkey);
+            } else {
+                const char *vkeys[65];
+                for (int i = 0; i < vn; i++) vkeys[i] = vkey;
+                vkeys[vn] = NULL;
+                if (samsung_tv_send_keys(ip, vkeys, 200) != 0) {
+                    fprintf(stderr, "%s: failed to send %s x%d\n", ip, vkey, vn);
+                    ret = 1;
+                } else {
+                    printf("%s: sent %s x%d\n", ip, vkey, vn);
+                }
+            }
+        } else if (strcmp(sub, "mute") == 0) { ret = cmd_tv_key(ip, "KEY_MUTE"); }
         else if (strcmp(sub, "power")   == 0) { ret = cmd_tv_key(ip, "KEY_POWER");   }
         else if (strcmp(sub, "off")     == 0) { ret = cmd_tv_key(ip, "KEY_POWEROFF");}
         else if (strcmp(sub, "source")  == 0) { ret = cmd_tv_key(ip, "KEY_SOURCE");  }
@@ -864,7 +1048,29 @@ int main(int argc, char *argv[])
         if (strcmp(sub, "probe") == 0) {
             ret = cmd_printer_probe(ip);
         } else if (strcmp(sub, "status") == 0) {
+            int quiet = (argc > 4 && strcmp(argv[4], "--quiet") == 0);
+            if (quiet) {
+                BrotherStatus qst = {0};
+                int ec;
+                if (brother_get_status(ip, &qst) != 0)
+                    ec = 1;
+                else if (qst.state == 3 && qst.toner_low <= 0)
+                    ec = 0;
+                else if (qst.state == 5 || qst.toner_low >= 1)
+                    ec = 2;
+                else
+                    ec = 1;
+                logger_close();
+                return ec;
+            }
             ret = cmd_printer_status(ip);
+        } else if (strcmp(sub, "toner") == 0) {
+            int raw = (argc > 4 && strcmp(argv[4], "--raw") == 0);
+            ret = cmd_printer_toner(ip, raw);
+        } else if (strcmp(sub, "pages") == 0) {
+            ret = cmd_printer_pages(ip);
+        } else if (strcmp(sub, "consumables") == 0) {
+            ret = cmd_printer_consumables(ip);
         } else {
             fprintf(stderr, "Unknown printer subcommand: %s\n", sub);
             print_usage(argv[0]);

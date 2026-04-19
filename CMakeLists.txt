@@ -41,3 +41,17 @@ add_executable(home-appliances src/main.c)
 target_link_libraries(home-appliances PRIVATE appliances)
 
 add_subdirectory(tests)
+
+include(GNUInstallDirs)
+
+install(TARGETS home-appliances
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES docs/man/home-appliances.1
+    DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+)
+
+install(FILES home-appliances.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+)

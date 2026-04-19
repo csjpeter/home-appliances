@@ -46,7 +46,9 @@ typedef enum
 typedef struct
 {
     GrantType grant_type;
-    char      received_key[64]; /* base64-decoded key from key packet */
+    char      received_key[64];     /* first decoded key (backward compat) */
+    char      received_keys[8][64]; /* all decoded keys */
+    int       key_count;
 } MockState;
 
 static MockState          g_mock_state  = {0};
@@ -64,67 +66,6 @@ static void drain_socket(int client_fd)
     unsigned char discard[512];
     /* First read with blocking to get the initial data. */
     recv(client_fd, discard, sizeof(discard), 0);
-}
-
-/*
- * Parse a key packet and extract the base64-decoded key name.
- *
- * Key packet layout:
- *   byte 0x00
- *   LE16 len_app          = 19
- *   19 bytes app string
- *   LE16 inner_len
- *   0x00 0x00 0x00        (3 zeros)
- *   LE16 b64_key_len
- *   <b64_key_len bytes>   base64(key_code)
- *
- * Returns 0 on success, -1 on error.
- */
-static int parse_key_packet(int client_fd, char *key_out, size_t key_out_size)
-{
-    unsigned char pkt[256];
-    ssize_t n = recv(client_fd, pkt, sizeof(pkt), 0);
-    if (n < 1)
-        return -1;
-
-    /*
-     * Fixed header:
-     *   1 (0x00) + 2 (app len LE16) + 19 (app string) + 2 (inner len LE16) = 24 bytes
-     * Then inner:
-     *   3 (zeros) + 2 (b64 key len LE16) = 5 bytes before b64 data
-     * Total minimum = 29 bytes.
-     */
-    if (n < 29)
-        return -1;
-
-    /* Offset of 3 zeros: byte 24 */
-    /* Offset of b64 key len LE16: byte 27 */
-    size_t b64_len_lo = pkt[27];
-    size_t b64_len_hi = pkt[28];
-    size_t b64_len    = b64_len_lo | (b64_len_hi << 8);
-
-    if (n < 29 + (ssize_t)b64_len)
-        return -1;
-
-    /* b64 key starts at byte 29 */
-    char b64_key[128];
-    if (b64_len >= sizeof(b64_key))
-        return -1;
-    memcpy(b64_key, pkt + 29, b64_len);
-    b64_key[b64_len] = '\0';
-
-    /* Decode */
-    unsigned char decoded[64];
-    int dec_len = base64_decode(b64_key, decoded, sizeof(decoded));
-    if (dec_len < 0)
-        return -1;
-
-    size_t copy_len = (size_t)dec_len < key_out_size - 1u
-                      ? (size_t)dec_len
-                      : key_out_size - 1u;
-    memcpy(key_out, decoded, copy_len);
-    key_out[copy_len] = '\0';
-    return 0;
 }
 
 /* ── Mock server thread ────────────────────────────────────────────────── */
@@ -185,11 +126,51 @@ static void *mock_tv_server(void *arg)
         break;
     }
 
-    /* ── Step 3: if granted, receive key packet ── */
+    /* ── Step 3: if granted, receive all key packets until disconnect ── */
     if (g_mock_state.grant_type == GRANT_TYPE_GRANTED ||
         g_mock_state.grant_type == GRANT_TYPE_WAITING_THEN_GRANT) {
-        parse_key_packet(client_fd, g_mock_state.received_key,
-                         sizeof(g_mock_state.received_key));
+        /*
+         * TCP is a stream: multiple key packets may arrive in one recv().
+         * Accumulate all data until the client closes the connection, then
+         * parse packets from the buffer.
+         */
+        unsigned char all_data[4096];
+        size_t        all_len = 0;
+        ssize_t       nr;
+        while ((nr = recv(client_fd, all_data + all_len,
+                          sizeof(all_data) - all_len, 0)) > 0)
+            all_len += (size_t)nr;
+
+        /* Parse key packets (each is 29 + b64_len bytes). */
+        g_mock_state.key_count = 0;
+        size_t offset = 0;
+        while (g_mock_state.key_count < 8 && offset + 29u <= all_len) {
+            size_t b64_len = (size_t)all_data[offset + 27]
+                           | ((size_t)all_data[offset + 28] << 8);
+            if (offset + 29u + b64_len > all_len)
+                break;
+            char b64_key[128];
+            if (b64_len >= sizeof(b64_key))
+                break;
+            memcpy(b64_key, all_data + offset + 29, b64_len);
+            b64_key[b64_len] = '\0';
+            unsigned char decoded[64] = {0};
+            int dec_len = base64_decode(b64_key, decoded, sizeof(decoded));
+            if (dec_len < 0)
+                break;
+            size_t copy_len = (size_t)dec_len <
+                              sizeof(g_mock_state.received_keys[0]) - 1u
+                              ? (size_t)dec_len
+                              : sizeof(g_mock_state.received_keys[0]) - 1u;
+            memcpy(g_mock_state.received_keys[g_mock_state.key_count],
+                   decoded, copy_len);
+            g_mock_state.received_keys[g_mock_state.key_count][copy_len] = '\0';
+            g_mock_state.key_count++;
+            offset += 29u + b64_len;
+        }
+        if (g_mock_state.key_count > 0)
+            memcpy(g_mock_state.received_key, g_mock_state.received_keys[0],
+                   sizeof(g_mock_state.received_key));
     }
 
     close(client_fd);
@@ -264,6 +245,25 @@ static void test_send_key_waiting_then_grant(void)
            "correct key received after waiting→grant");
 }
 
+static void test_send_keys_multi(void)
+{
+    pthread_t tid = start_mock_server(GRANT_TYPE_GRANTED);
+
+    const char *keys[] = { "KEY_MENU", "KEY_DOWN", "KEY_ENTER", NULL };
+    int result = samsung_tv_send_keys(MOCK_HOST, keys, 0);  /* 0ms for fast test */
+
+    pthread_join(tid, NULL);
+
+    ASSERT(result == 0, "send_keys should return 0 on success");
+    ASSERT(g_mock_state.key_count == 3, "mock should receive 3 keys");
+    ASSERT(strcmp(g_mock_state.received_keys[0], "KEY_MENU")  == 0,
+           "first key should be KEY_MENU");
+    ASSERT(strcmp(g_mock_state.received_keys[1], "KEY_DOWN")  == 0,
+           "second key should be KEY_DOWN");
+    ASSERT(strcmp(g_mock_state.received_keys[2], "KEY_ENTER") == 0,
+           "third key should be KEY_ENTER");
+}
+
 /* ── main ────────────────────────────────────────────────────────────────  */
 
 int main(void)
@@ -276,6 +276,7 @@ int main(void)
     RUN_TEST(test_send_key_denied);
     RUN_TEST(test_send_key_correct_key);
     RUN_TEST(test_send_key_waiting_then_grant);
+    RUN_TEST(test_send_keys_multi);
 
     printf("\n%d test(s) run, %d failed.\n", g_tests_run, g_tests_failed);
     return g_tests_failed == 0 ? 0 : 1;

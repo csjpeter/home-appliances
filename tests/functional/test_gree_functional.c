@@ -552,6 +552,156 @@ static void test_extended_params(void)
     run_with_mock(do_test_extended_params, 1);
 }
 
+/* ---------- test_set_temp ---------- */
+static void do_test_set_temp(GreeDevice *dev)
+{
+    const char *keys[] = { "SetTem" };
+    const int   vals[] = { 24 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_temp returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "SetTem") == 0, "set_temp: key is SetTem");
+    ASSERT(g_state.last_set_val == 24, "set_temp: value is 24");
+}
+
+static void test_set_temp(void) { run_with_mock(do_test_set_temp, 1); }
+
+/* ---------- test_set_mode ---------- */
+static void do_test_set_mode(GreeDevice *dev)
+{
+    const char *keys[] = { "Mod" };
+    const int   vals[] = { 0 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_mode returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "Mod") == 0, "set_mode: key is Mod");
+    ASSERT(g_state.last_set_val == 0, "set_mode: value is 0 (auto)");
+}
+
+static void test_set_mode(void) { run_with_mock(do_test_set_mode, 1); }
+
+/* ---------- test_set_fan ---------- */
+static void do_test_set_fan(GreeDevice *dev)
+{
+    const char *keys[] = { "WdSpd" };
+    const int   vals[] = { 3 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_fan returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "WdSpd") == 0, "set_fan: key is WdSpd");
+    ASSERT(g_state.last_set_val == 3, "set_fan: value is 3 (high)");
+}
+
+static void test_set_fan(void) { run_with_mock(do_test_set_fan, 1); }
+
+/* ---------- test_set_sleep ---------- */
+static void do_test_set_sleep(GreeDevice *dev)
+{
+    const char *keys[] = { "SwhSlp" };
+    const int   vals[] = { 1 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_sleep returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "SwhSlp") == 0, "set_sleep: key is SwhSlp");
+    ASSERT(g_state.last_set_val == 1, "set_sleep: value is 1");
+}
+
+static void test_set_sleep(void) { run_with_mock(do_test_set_sleep, 1); }
+
+/* ---------- test_set_swing_v ---------- */
+static void do_test_set_swing_v(GreeDevice *dev)
+{
+    const char *keys[] = { "SwUpDn" };
+    const int   vals[] = { 2 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_swing_v returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "SwUpDn") == 0, "set_swing_v: key is SwUpDn");
+    ASSERT(g_state.last_set_val == 2, "set_swing_v: value is 2");
+}
+
+static void test_set_swing_v(void) { run_with_mock(do_test_set_swing_v, 1); }
+
+/* ---------- test_set_swing_h ---------- */
+static void do_test_set_swing_h(GreeDevice *dev)
+{
+    const char *keys[] = { "SwingLfRig" };
+    const int   vals[] = { 1 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_swing_h returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "SwingLfRig") == 0, "set_swing_h: key is SwingLfRig");
+    ASSERT(g_state.last_set_val == 1, "set_swing_h: value is 1");
+}
+
+static void test_set_swing_h(void) { run_with_mock(do_test_set_swing_h, 1); }
+
+/* ---------- test_set_xfan ---------- */
+static void do_test_set_xfan(GreeDevice *dev)
+{
+    const char *keys[] = { "Blo" };
+    const int   vals[] = { 1 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_xfan returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "Blo") == 0, "set_xfan: key is Blo");
+    ASSERT(g_state.last_set_val == 1, "set_xfan: value is 1");
+}
+
+static void test_set_xfan(void) { run_with_mock(do_test_set_xfan, 1); }
+
+/* ---------- test_set_health ---------- */
+static void do_test_set_health(GreeDevice *dev)
+{
+    const char *keys[] = { "Health" };
+    const int   vals[] = { 1 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_health returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "Health") == 0, "set_health: key is Health");
+    ASSERT(g_state.last_set_val == 1, "set_health: value is 1");
+}
+
+static void test_set_health(void) { run_with_mock(do_test_set_health, 1); }
+
+/* ---------- test_set_antifrost ---------- */
+static void do_test_set_antifrost(GreeDevice *dev)
+{
+    const char *keys[] = { "StHt" };
+    const int   vals[] = { 1 };
+    int rc = gree_client_set(dev, keys, vals, 1);
+    ASSERT(rc == 0, "set_antifrost returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "StHt") == 0, "set_antifrost: key is StHt");
+    ASSERT(g_state.last_set_val == 1, "set_antifrost: value is 1");
+}
+
+static void test_set_antifrost(void) { run_with_mock(do_test_set_antifrost, 1); }
+
+/* ---------- test_set_multi_param ---------- */
+static void do_test_set_multi_param(GreeDevice *dev)
+{
+    const char *keys[] = { "Pow", "SetTem", "Mod" };
+    const int   vals[] = { 1, 26, 1 };
+    int rc = gree_client_set(dev, keys, vals, 3);
+    ASSERT(rc == 0, "set_multi_param returns 0");
+    ASSERT(strcmp(g_state.last_set_key, "Pow") == 0, "set_multi_param: first key is Pow");
+}
+
+static void test_set_multi_param(void) { run_with_mock(do_test_set_multi_param, 1); }
+
+/* ---------- test_set_unbound ---------- */
+static void test_set_unbound(void)
+{
+    GreeDevice dev = {0};
+    dev.bound = 0;
+    const char *keys[] = { "Pow" };
+    const int   vals[] = { 1 };
+    int rc = gree_client_set(&dev, keys, vals, 1);
+    ASSERT(rc == -1, "set on unbound device returns -1");
+}
+
+/* ---------- test_get_status_unbound ---------- */
+static void test_get_status_unbound(void)
+{
+    GreeDevice dev = {0};
+    dev.bound = 0;
+    GreeStatus st = {0};
+    int rc = gree_client_get_status(&dev, &st);
+    ASSERT(rc == -1, "get_status on unbound device returns -1");
+}
+
 /* ── main ─────────────────────────────────────────────────────────────── */
 
 int main(void)
@@ -564,6 +714,18 @@ int main(void)
     RUN_TEST(test_temsen_offset);
     RUN_TEST(test_set_power);
     RUN_TEST(test_extended_params);
+    RUN_TEST(test_set_temp);
+    RUN_TEST(test_set_mode);
+    RUN_TEST(test_set_fan);
+    RUN_TEST(test_set_sleep);
+    RUN_TEST(test_set_swing_v);
+    RUN_TEST(test_set_swing_h);
+    RUN_TEST(test_set_xfan);
+    RUN_TEST(test_set_health);
+    RUN_TEST(test_set_antifrost);
+    RUN_TEST(test_set_multi_param);
+    RUN_TEST(test_set_unbound);
+    RUN_TEST(test_get_status_unbound);
 
     printf("\nResults: %d/%d passed", g_tests_run - g_tests_failed, g_tests_run);
     if (g_tests_failed)

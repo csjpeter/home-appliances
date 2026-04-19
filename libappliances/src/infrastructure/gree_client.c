@@ -583,11 +583,13 @@ int gree_client_load_bound(GreeDeviceList *out)
         memset(dev, 0, sizeof(*dev));
 
         char key[GREE_KEY_LEN] = {0};
-        if (sscanf(line, "%15s %12s %16s", dev->ip, dev->mac, key) == 3
-            && strlen(key) == 16) {
+        int fields = sscanf(line, "%15s %12s %16s", dev->ip, dev->mac, key);
+        if (fields == 3 && strlen(key) == 16) {
             memcpy(dev->device_key, key, GREE_KEY_LEN);
             dev->bound = 1;
             out->count++;
+        } else if (fields == 3) {
+            LOG_WARN_MSG("gree_client_load_bound: corrupt key for %s, skipping", dev->ip);
         }
     }
     return 0;
@@ -611,6 +613,7 @@ int gree_client_save_bound(const GreeDeviceList *list)
         LOG_ERROR_MSG("Cannot write gree device store: %s", path);
         return -1;
     }
+    chmod(path, 0600);
 
     fprintf(f, "# ip mac device_key\n");
     for (int i = 0; i < list->count; i++) {
