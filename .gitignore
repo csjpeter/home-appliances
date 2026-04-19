@@ -1,0 +1,8 @@
+build*/
+bin/
+*.log
+*.gcov
+*.gcda
+*.gcno
+.env
+.claude/
