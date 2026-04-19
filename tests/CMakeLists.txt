@@ -1,6 +1,7 @@
 add_executable(test-runner
     unit/test_runner.c
     unit/test_config.c
+    unit/test_base64.c
 )
 
 target_include_directories(test-runner PRIVATE

@@ -11,7 +11,7 @@ static const char *type_name(ApplianceType type)
         case APPLIANCE_TYPE_GREE_AC:         return "Gree AC";
         case APPLIANCE_TYPE_ROBOROCK:        return "robot vacuum";
         case APPLIANCE_TYPE_SAMSUNG_TV:      return "smart TV";
-        case APPLIANCE_TYPE_BROTHER_PRINTER: return "nyomtató printer";
+        case APPLIANCE_TYPE_BROTHER_PRINTER: return "printer";
     }
     return "Unknown";
 }

@@ -58,7 +58,7 @@ case "$cmd" in
         ;;
     deps)
         sudo apt-get update
-        sudo apt-get install -y cmake gcc valgrind lcov
+        sudo apt-get install -y cmake gcc valgrind lcov libssl-dev
         ;;
     *)
         usage
