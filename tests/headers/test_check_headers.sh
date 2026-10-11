@@ -46,6 +46,20 @@ expect "tag disagrees with LICENSE" 1
 printf 'Proprietary. The owner is the author.\n' > "$T/LICENSE"
 expect "tag agrees with LICENSE" 0
 
+mkdir -p "$T/debian"
+printf 'License: LicenseRef-Proprietary\n' > "$T/debian/copyright"
+expect "debian/copyright agrees" 0
+printf 'License: MIT\n' > "$T/debian/copyright"
+expect "debian/copyright disagrees" 1
+rm "$T/debian/copyright"
+printf 'Licensed under MIT\n' > "$T/README.md"
+expect "README names another licence" 1
+printf 'Proprietary.\n' > "$T/README.md"
+expect "README agrees" 0
+printf 'set(CPACK_PACKAGE_LICENSE "GPL-3")\n' > "$T/CMakeLists.txt"
+expect "CMake licence field disagrees" 1
+rm "$T/CMakeLists.txt" "$T/README.md"
+
 { printf '#!/bin/sh\n'; good | sed 's#^/\* \(.*\) \*/$#\# \1#'; } > "$T/a.sh"
 expect "shebang then header passes" 0
 

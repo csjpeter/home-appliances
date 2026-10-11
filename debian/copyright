@@ -1,0 +1,10 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: home-appliances
+Upstream-Contact: Peter Csaszar (Császár Péter)
+
+Files: *
+Copyright: 2026 Peter Csaszar (Császár Péter)
+License: LicenseRef-Proprietary
+ Copyright (c) 2026 Peter Csaszar (Császár Péter). All rights reserved.
+ .
+ Proprietary. The owner is the author.

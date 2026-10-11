@@ -1,7 +1,7 @@
 [![CI](https://github.com/csjpeter/home-appliances/actions/workflows/ci.yml/badge.svg)](https://github.com/csjpeter/home-appliances/actions/workflows/ci.yml)
 [![Valgrind](https://github.com/csjpeter/home-appliances/actions/workflows/valgrind.yml/badge.svg)](https://github.com/csjpeter/home-appliances/actions/workflows/valgrind.yml)
 [![Coverage](https://csjpeter.github.io/home-appliances/coverage-badge.svg)](https://csjpeter.github.io/home-appliances/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-lightgrey.svg)](LICENSE)
 
 # home-appliances
 
@@ -133,7 +133,7 @@ man ./docs/man/home-appliances.1   # from source tree
 
 ## License
 
-MIT
+Proprietary; the owner is the author. See [LICENSE](LICENSE).
 
 ## Claude skill
 
