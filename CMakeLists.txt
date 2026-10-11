@@ -58,3 +58,7 @@ install(FILES docs/man/home-appliances.1
 install(FILES home-appliances.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
+
+install(FILES claude/skills/home-appliances/SKILL.md
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/claude-skills/home-appliances
+)

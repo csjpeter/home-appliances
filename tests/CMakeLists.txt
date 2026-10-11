@@ -141,3 +141,8 @@ add_pty_test(test-pty-ac      ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_ac.c)
 add_pty_test(test-pty-vacuum  ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_vacuum.c)
 add_pty_test(test-pty-tv      ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_tv.c)
 add_pty_test(test-pty-printer ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_printer.c)
+
+# Skill check — claude/skills/home-appliances/SKILL.md front matter and that
+# every command it shows is documented in the man page.
+add_test(NAME skill-check
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/skill/check_skill.sh)
