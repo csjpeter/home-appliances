@@ -134,3 +134,9 @@ man ./docs/man/home-appliances.1   # from source tree
 ## License
 
 MIT
+
+## Claude skill
+
+`claude/skills/home-appliances/SKILL.md` describes the CLI for an AI agent. It is
+installed with the tool to `<prefix>/share/claude-skills/home-appliances/`; a
+package will place it under `/usr/share/claude-skills/`.
