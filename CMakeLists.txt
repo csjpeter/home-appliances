@@ -19,6 +19,10 @@ endif()
 
 project(home-appliances VERSION 0.1.0 LANGUAGES C)
 
+# Package licence field; agrees with LICENSE and debian/copyright.
+set(CPACK_PACKAGE_LICENSE "Proprietary")
+set(CPACK_RPM_PACKAGE_LICENSE "Proprietary")
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -59,6 +63,10 @@ install(TARGETS home-appliances home-appliances-discovery
 
 install(FILES docs/man/home-appliances.1
     DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+)
+
+install(FILES LICENSE
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/home-appliances
 )
 
 install(FILES home-appliances.desktop

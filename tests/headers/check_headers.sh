@@ -22,6 +22,20 @@ if [ -f "$ROOT/LICENSE" ]; then
     fi
 fi
 
+if [ "$want" = "LicenseRef-Proprietary" ]; then
+    if [ -f "$ROOT/debian/copyright" ] \
+        && ! grep -q '^License: LicenseRef-Proprietary' "$ROOT/debian/copyright"; then
+        echo "FAIL: debian/copyright does not say LicenseRef-Proprietary"; fail=1
+    fi
+    if [ -f "$ROOT/README.md" ] && grep -Eqi '\b(GPL|MIT|BSD)\b' "$ROOT/README.md"; then
+        echo "FAIL: README.md names a licence other than the proprietary one"; fail=1
+    fi
+    if [ -f "$ROOT/CMakeLists.txt" ] && grep -q 'PACKAGE_LICENSE' "$ROOT/CMakeLists.txt" \
+        && ! grep -q 'PACKAGE_LICENSE "Proprietary"' "$ROOT/CMakeLists.txt"; then
+        echo "FAIL: CMake package licence field is not Proprietary"; fail=1
+    fi
+fi
+
 while IFS= read -r f; do
     rel="${f#"$ROOT"/}"
     head="$(head -n 13 "$f")"
