@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Pty session lifecycle, input and screen inspection. */
+
 /**
  * @file pty_session.c
  * @brief PTY session lifecycle, input, and screen inspection.

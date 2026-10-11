@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Brother printer client over SNMP v1 (raw UDP and BER). */
+
 /**
  * @file brother_client.c
  * @brief Brother printer SNMP v1 client — raw UDP/BER, no external libraries.

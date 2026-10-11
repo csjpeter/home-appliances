@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Samsung TV remote client over the legacy TCP/55000 protocol. */
+
 /**
  * @file samsung_tv_client.c
  * @brief Samsung Smart TV local control — legacy TCP/55000 protocol.

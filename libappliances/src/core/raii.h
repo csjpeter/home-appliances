@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* RAII cleanup-attribute helpers for strings and files. */
+
 #ifndef RAII_H
 #define RAII_H
 

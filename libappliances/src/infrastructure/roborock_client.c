@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Roborock vacuum client over the miio UDP protocol. */
+
 /**
  * @file roborock_client.c
  * @brief Roborock vacuum client — miio UDP protocol implementation.

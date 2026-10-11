@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Functional tests of the Brother client against a mock SNMP server. */
+
 /**
  * @file test_brother_functional.c
  * @brief Functional tests for brother_client using a pthread-based UDP mock SNMP server.

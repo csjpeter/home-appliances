@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Virtual screen buffer with a VT100 escape sequence parser. */
+
 /**
  * @file pty_screen.c
  * @brief Virtual screen buffer with VT100 escape sequence parser.

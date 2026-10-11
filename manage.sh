@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Proprietary; the owner is the author.
+# Created: 2026-04-19
+# Project script: build, test, coverage, install and header check.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -10,6 +15,7 @@ usage() {
     echo "Commands:"
     echo "  build      Release build → bin/home-appliances"
     echo "  debug      Debug build with ASAN"
+    echo "  check      Header check, then all tests (the gate)"
     echo "  test       Unit tests with ASAN"
     echo "  valgrind   Valgrind leak check"
     echo "  coverage   GCOV/LCOV coverage report"
@@ -35,6 +41,11 @@ case "$cmd" in
     debug)
         build_type Debug
         echo "Debug build done: $BIN_DIR/home-appliances"
+        ;;
+    check)
+        "$ROOT/tests/headers/test_check_headers.sh"
+        "$ROOT/tests/headers/check_headers.sh"
+        "$0" test
         ;;
     test)
         build_type Debug

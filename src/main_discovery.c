@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* The home-appliances-discovery periodic network scanner. */
+
 /**
  * @file main_discovery.c
  * @brief home-appliances-discovery — periodic network monitor.

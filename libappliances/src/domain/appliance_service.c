@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Domain layer: one control surface over all appliance clients. */
+
 #include "appliance_service.h"
 #include "../core/logger.h"
 #include "../infrastructure/roborock_client.h"

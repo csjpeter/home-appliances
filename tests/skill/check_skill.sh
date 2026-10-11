@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Proprietary; the owner is the author.
+# Created: 2026-10-11
+# Checks the Claude skill's front matter and commands against the man page.
 # Verifies that claude/skills/home-appliances/SKILL.md has its front matter and
 # that every "home-appliances <group> <sub>" command it shows is in the man page.
 set -euo pipefail

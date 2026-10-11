@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Functional tests of the Samsung TV client against a mock TCP server. */
+
 /**
  * @file test_samsung_tv_functional.c
  * @brief Functional tests for samsung_tv_client using a pthread mock TCP server.

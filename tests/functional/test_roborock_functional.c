@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Functional tests of the Roborock client against a mock UDP server. */
+
 /**
  * @file test_roborock_functional.c
  * @brief Functional tests for roborock_client using a UDP mock server.

@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Proprietary; the owner is the author.
+# Created: 2026-04-19
+# Test targets: unit, functional, pty, skill and header checks.
+
 add_executable(test-runner
     unit/test_runner.c
     unit/test_config.c
@@ -146,3 +152,10 @@ add_pty_test(test-pty-printer ${CMAKE_SOURCE_DIR}/tests/pty/test_pty_printer.c)
 # every command it shows is documented in the man page.
 add_test(NAME skill-check
     COMMAND ${CMAKE_SOURCE_DIR}/tests/skill/check_skill.sh)
+
+# Header check — every source file and script carries the source-file header,
+# and the checker itself is tested to fail on each kind of defect.
+add_test(NAME header-check
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/headers/check_headers.sh)
+add_test(NAME header-check-selftest
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/headers/test_check_headers.sh)

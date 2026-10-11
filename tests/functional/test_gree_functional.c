@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Functional tests of the Gree client against a mock UDP server. */
+
 /**
  * @file test_gree_functional.c
  * @brief Functional tests for gree_client using a UDP mock server.

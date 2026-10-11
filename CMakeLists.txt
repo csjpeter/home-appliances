@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Proprietary; the owner is the author.
+# Created: 2026-04-19
+# Top-level build: the CLI, the discovery binary, tests and install rules.
+
 cmake_minimum_required(VERSION 3.10)
 
 execute_process(

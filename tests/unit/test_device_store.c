@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Unit tests of the device store files. */
+
 #include "../common/test_helpers.h"
 #include "infrastructure/gree_client.h"
 #include "infrastructure/roborock_client.h"

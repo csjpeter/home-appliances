@@ -1,3 +1,9 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright (c) 2026 Peter Csaszar (Császár Péter)
+# Proprietary; the owner is the author.
+# Created: 2026-04-19
+# Build rules for the libappliances static library.
+
 add_library(appliances STATIC
     src/core/logger.c
     src/core/config.c

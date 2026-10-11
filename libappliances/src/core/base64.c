@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Base64 encoder and decoder (RFC 4648, standard alphabet). */
+
 #include "base64.h"
 
 #include <string.h>
