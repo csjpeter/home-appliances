@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Roborock vacuum client interface. */
+
 #ifndef ROBOROCK_CLIENT_H
 #define ROBOROCK_CLIENT_H
 

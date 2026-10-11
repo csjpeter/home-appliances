@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Internal structures shared between the pty test library modules. */
+
 #ifndef PTY_INTERNAL_H
 #define PTY_INTERNAL_H
 

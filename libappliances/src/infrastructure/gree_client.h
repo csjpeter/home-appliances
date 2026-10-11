@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Gree air-conditioner client interface. */
+
 #ifndef GREE_CLIENT_H
 #define GREE_CLIENT_H
 

@@ -1,3 +1,9 @@
+/* SPDX-License-Identifier: LicenseRef-Proprietary */
+/* Copyright (c) 2026 Peter Csaszar (Császár Péter) */
+/* Proprietary; the owner is the author. */
+/* Created: 2026-04-19 */
+/* Gree air-conditioner client over the LAN v2 protocol. */
+
 #include "gree_client.h"
 #include "../core/base64.h"
 #include "../core/logger.h"
